@@ -1,4 +1,5 @@
 'use client';
+import { templateVarCount, templateContent } from '../services/template-utils';
 
 import { useEffect, useMemo, useState } from 'react';
 import { X, Loader2, AlertTriangle } from 'lucide-react';
@@ -25,13 +26,6 @@ const channelLabels: Record<string, string> = {
   INSTAGRAM: 'Instagram',
   GMAIL: 'Gmail',
 };
-
-/** Conta placeholders {{1}}, {{2}}... no texto do componente BODY do template. */
-function templateVarCount(template: WhatsAppTemplate | undefined): number {
-  const body = template?.components.find((c) => c.type === 'BODY');
-  const matches = (body?.text as string | undefined)?.match(/\{\{\d+\}\}/g);
-  return matches?.length ?? 0;
-}
 
 interface Props {
   open: boolean;
@@ -129,19 +123,7 @@ export function NewConversationDialog({ open, onClose, onCreated }: Props) {
       const message = isOfficial
         ? {
             type: 'TEMPLATE' as const,
-            content: {
-              name: templateName,
-              language: { code: selectedTemplate?.language ?? 'pt_BR' },
-              components: [
-                {
-                  type: 'body',
-                  parameters: templateVars.map((v) => ({
-                    type: 'text',
-                    text: v.trim() || '-',
-                  })),
-                },
-              ],
-            },
+            content: templateContent(selectedTemplate!, templateVars),
           }
         : { type: 'TEXT' as const, content: { text: messageText.trim() } };
 

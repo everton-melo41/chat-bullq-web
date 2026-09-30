@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Radio, Users, Tags, Bell, Building2, KeyRound, Sparkles, BookUser, Layers } from 'lucide-react';
 
 const tabs = [
+  { href: '/settings/departments', label: 'Departamentos', icon: Building2 },
   { href: '/settings/channels', label: 'Canais', icon: Radio },
   { href: '/settings/segments', label: 'Segmentos', icon: Layers },
   { href: '/settings/general', label: 'Geral', icon: Building2 },

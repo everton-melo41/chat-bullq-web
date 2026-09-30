@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Paperclip, Mic, Trash2, Square, Loader2, X } from 'lucide-react';
+import { Lock, Send, Paperclip, Mic, Trash2, Square, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConversationTemplatePicker } from './conversation-template-picker';
 import { useAudioRecorder } from '../hooks/use-audio-recorder';
 
 export interface MentionParticipant {
@@ -13,6 +14,10 @@ export interface MentionParticipant {
 }
 
 interface ChatInputProps {
+  onSendNote?: (text: string) => Promise<void>;
+  onSendTemplate?: (content: Record<string, unknown>) => Promise<void>;
+  templateChannelId?: string;
+  windowClosed?: boolean;
   onSend: (text: string, mentions?: string[] | 'all') => Promise<void>;
   onSendAudio?: (blob: Blob) => Promise<void>;
   onSendFile?: (file: File, caption?: string) => Promise<void>;
@@ -44,12 +49,18 @@ const FILE_ACCEPT = [
 
 export function ChatInput({
   onSend,
+  onSendNote,
+  onSendTemplate,
+  templateChannelId,
+  windowClosed = false,
   onSendAudio,
   onSendFile,
   disabled,
   participants = [],
 }: ChatInputProps) {
   const [text, setText] = useState('');
+  const [noteMode, setNoteMode] = useState(false);
+  const [noteText, setNoteText] = useState('');
   // Menções escolhidas nesta mensagem: rótulo exibido -> telefone (ou 'all').
   // No envio, cada rótulo vira `@<telefone>` no texto, que é o que o WhatsApp
   // precisa pra desenhar a menção destacada.
@@ -79,6 +90,7 @@ export function ChatInput({
   }, [pastedImage]);
 
   const handleSubmit = useCallback(async () => {
+    if (disabled || windowClosed) return;
     // Envio da imagem colada (com legenda opcional vinda do textarea).
     if (pastedImage) {
       if (isSendingFile || !onSendFile) return;
@@ -130,7 +142,7 @@ export function ChatInput({
     } finally {
       setIsSending(false);
     }
-  }, [pastedImage, text, isSending, isSendingFile, onSend, onSendFile, picked]);
+  }, [pastedImage, text, isSending, isSendingFile, onSend, onSendFile, picked, disabled, windowClosed]);
 
   // Lista filtrada do menu de menção. "todos" só aparece sem busca ou quando
   // o texto digitado casa com ele.
@@ -220,7 +232,7 @@ export function ChatInput({
       }
       // sem imagem no clipboard → deixa o paste de texto normal seguir
     },
-    [onSendFile],
+    [onSendFile, disabled, windowClosed],
   );
 
   const discardImage = () => setPastedImage(null); // useEffect revoga a URL
@@ -265,7 +277,7 @@ export function ChatInput({
   };
 
   const handleSendAudio = useCallback(async () => {
-    if (!recorder.blob || !onSendAudio) return;
+    if (disabled || windowClosed || !recorder.blob || !onSendAudio) return;
     setIsSendingAudio(true);
     try {
       await onSendAudio(recorder.blob);
@@ -277,7 +289,7 @@ export function ChatInput({
     } finally {
       setIsSendingAudio(false);
     }
-  }, [recorder, onSendAudio]);
+  }, [recorder, onSendAudio, disabled, windowClosed]);
 
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -285,7 +297,7 @@ export function ChatInput({
       // Limpa o value pra permitir reenviar o MESMO arquivo em seguida —
       // sem isso o onChange não dispara na segunda escolha.
       e.target.value = '';
-      if (!file || !onSendFile) return;
+      if (disabled || windowClosed || !file || !onSendFile) return;
       setIsSendingFile(true);
       try {
         await onSendFile(file);
@@ -297,7 +309,7 @@ export function ChatInput({
         setIsSendingFile(false);
       }
     },
-    [onSendFile],
+    [onSendFile, disabled, windowClosed],
   );
 
   const formatElapsed = (ms: number) => {
@@ -307,9 +319,23 @@ export function ChatInput({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  const modeToggle = onSendNote && <button type="button" className="mb-2 flex items-center gap-1 text-xs" aria-pressed={noteMode} onClick={() => setNoteMode(!noteMode)}><Lock className="h-3 w-3" />{noteMode ? 'Voltar para mensagem' : 'Nota interna'}</button>;
+  if (noteMode && onSendNote) return <div className="border-t border-amber-200 bg-amber-50 p-3 text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+    {modeToggle}<p className="mb-2 flex items-center gap-1 text-xs"><Lock className="h-3 w-3" />Nota interna · visível só para a equipe</p>
+    <textarea aria-label="Nota interna" className="w-full rounded border border-amber-300 bg-transparent p-2" value={noteText} maxLength={20000} onChange={e => setNoteText(e.target.value)} />
+    <button type="button" disabled={!noteText.trim() || isSending} className="mt-2 rounded bg-amber-200 px-3 py-2 text-amber-950 disabled:opacity-50" onClick={async () => {
+      setIsSending(true); try { await onSendNote(noteText.trim()); setNoteText(''); } catch { toast.error('Não foi possível salvar a nota'); } finally { setIsSending(false); }
+    }}>{isSending ? 'Salvando…' : 'Salvar nota'}</button>
+  </div>;
+  const templatePicker = templateChannelId && onSendTemplate && <ConversationTemplatePicker channelId={templateChannelId} onSend={onSendTemplate} disabled={disabled} />;
+  if (windowClosed && !disabled) return <div className="border-t bg-amber-50 p-3 text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+    {modeToggle}<p className="mb-2 text-sm">Janela de 24h fechada. Envie um template aprovado para retomar o atendimento.</p>{templatePicker}
+    <textarea aria-label="Mensagem livre indisponível" disabled placeholder="Aguardando uma mensagem do cliente ou envio de template" className="w-full rounded border bg-transparent p-2 opacity-60" />
+  </div>;
   if (disabled) {
     return (
       <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-3 text-center text-sm text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/50">
+        {modeToggle}
         Conversa encerrada — reabra para enviar mensagens
       </div>
     );
@@ -388,6 +414,7 @@ export function ChatInput({
 
   return (
     <div className="relative border-t border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+      {modeToggle}{templatePicker}
       {mentionMatches.length > 0 && (
         <div className="absolute bottom-full left-3 z-20 mb-1 max-h-64 w-72 overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
           {mentionMatches.map((p, i) => (

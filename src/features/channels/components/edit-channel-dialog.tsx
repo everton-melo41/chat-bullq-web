@@ -1,5 +1,7 @@
 'use client';
 
+import { useQuery } from '@tanstack/react-query';
+import { departmentsService } from '@/features/departments/services/departments.service';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Loader2, X } from 'lucide-react';
@@ -27,6 +29,8 @@ export function EditChannelDialog({
   onSaved,
 }: EditChannelDialogProps) {
   const [name, setName] = useState('');
+  const [defaultDepartmentId, setDefaultDepartmentId] = useState('');
+  const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: departmentsService.list, enabled: !!channel });
   const [config, setConfig] = useState<Record<string, string>>({});
   const [webhookSecret, setWebhookSecret] = useState('');
   const [saving, setSaving] = useState(false);
@@ -34,6 +38,7 @@ export function EditChannelDialog({
   useEffect(() => {
     if (!channel) return;
     setName(channel.name);
+    setDefaultDepartmentId(channel.defaultDepartmentId ?? "");
     // Coerce nested values to string for the form. Booleans/numbers are
     // re-typed on save when needed (none of the WhatsApp configs use them).
     const flat: Record<string, string> = {};
@@ -69,6 +74,7 @@ export function EditChannelDialog({
       }
       await channelsService.update(channel.id, {
         name: name.trim(),
+        defaultDepartmentId: defaultDepartmentId || null,
         config: merged,
         webhookSecret: webhookSecret.trim() || undefined,
       });
@@ -114,6 +120,12 @@ export function EditChannelDialog({
             />
           </div>
 
+          <label className={labelCls}>Departamento padrão
+            <select className={inputCls} value={defaultDepartmentId} onChange={e => setDefaultDepartmentId(e.target.value)}>
+              <option value="">Sem departamento padrão</option>
+              {departments.filter(d => d.channelId === channel.id).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </label>
           {fields.map((f) => (
             <div key={f.key} className="space-y-1.5">
               <label className={labelCls}>

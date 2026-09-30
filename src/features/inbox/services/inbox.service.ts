@@ -39,7 +39,11 @@ export interface LastMessage {
   createdAt: string;
 }
 
+export interface InternalNote { id: string; conversationId: string; authorId: string; content: string; createdAt: string; author: { id: string; name: string } | null; }
+
 export interface Conversation {
+  departmentId?: string | null;
+  department?: { id: string; name: string } | null;
   id: string;
   organizationId: string;
   channelId: string;
@@ -163,6 +167,9 @@ async function settleConversations(ids: string[], operation: (id: string) => Pro
 }
 
 export const inboxService = {
+  async listNotes(id: string): Promise<InternalNote[]> { const { data } = await api.get(`/conversations/${id}/notes`); return data.data; },
+  async createNote(id: string, content: string): Promise<void> { await api.post(`/conversations/${id}/notes`, { content }); },
+  async deleteNote(id: string, noteId: string): Promise<void> { await api.delete(`/conversations/${id}/notes/${noteId}`); },
   async getConversations(params?: Record<string, string>): Promise<{
     conversations: Conversation[];
     pagination: any;
@@ -178,6 +185,7 @@ export const inboxService = {
 
   async getMessages(conversationId: string, page = 1, limit = 50): Promise<{
     messages: Message[];
+    lastInboundAt?: string | null;
     pagination: any;
   }> {
     const { data } = await api.get('/messages', {
@@ -378,7 +386,7 @@ export const inboxService = {
 
   async updateConversation(
     conversationId: string,
-    patch: { subject?: string | null },
+    patch: { subject?: string | null; departmentId?: string; assignedToId?: string },
   ): Promise<Conversation> {
     const { data } = await api.patch(`/conversations/${conversationId}`, patch);
     return data.data ?? data;

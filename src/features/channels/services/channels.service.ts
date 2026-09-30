@@ -5,6 +5,7 @@ export type ChannelType = 'WHATSAPP_OFFICIAL' | 'WHATSAPP_ZAPPFY' | 'INSTAGRAM' 
 export type ChannelVisibility = 'ORG' | 'PRIVATE';
 
 export interface Channel {
+  defaultDepartmentId?: string | null;
   id: string;
   organizationId: string;
   type: ChannelType;
@@ -32,6 +33,7 @@ export interface CreateChannelPayload {
 }
 
 export interface UpdateChannelPayload {
+  defaultDepartmentId?: string | null;
   name?: string;
   config?: Record<string, any>;
   webhookSecret?: string;

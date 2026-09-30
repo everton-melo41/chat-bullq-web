@@ -264,12 +264,12 @@ export function CreateAgentDialog({
             >
               {CURATED_MODELS.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.label} — {m.badge}
+                  {m.label}
                 </option>
               ))}
             </select>
             <p className="mt-1 text-[11px] text-zinc-500">
-              Sugestão: Fugu Ultra para conversas; Fugu para tarefas internas simples.
+              Sugestão: Fugu para atendimento rápido; Fugu Ultra para raciocínio profundo.
             </p>
           </div>
 

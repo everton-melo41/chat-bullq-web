@@ -191,7 +191,7 @@ export function EditAgentDialog({
             >
               {CURATED_MODELS.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.label} — {m.badge}
+                  {m.label}
                 </option>
               ))}
               {!CURATED_MODELS.some((m) => m.id === modelId) && (

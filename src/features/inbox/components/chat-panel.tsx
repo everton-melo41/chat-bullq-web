@@ -5,6 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, CheckCheck, Clock, AlertCircle, ExternalLink, Reply, Trash2, X, Ban, Forward } from 'lucide-react';
 import { toast } from 'sonner';
 import { inboxService, type Conversation, type Message } from '../services/inbox.service';
+import { InternalNoteCard } from './internal-note-card';
+import { ConversationDetailsPanel } from './conversation-details-panel';
 import { ChatInput } from './chat-input';
 import { ConversationHeader } from './conversation-header';
 import { StoryReplyCard } from './story-reply-card';
@@ -40,60 +42,6 @@ const statusIcons: Record<string, React.ElementType> = {
   READ: CheckCheck,
   FAILED: AlertCircle,
 };
-
-/**
- * Banner de aviso quando a conversa está fora da "janela de atendimento"
- * do WhatsApp (24h sem mensagem do cliente). Sem template aprovado, qualquer
- * mensagem livre é rejeitada pelo provider com `failed_reason: Re-engagement
- * message`.
- *
- * Heurística client-side: olha as últimas mensagens já carregadas e procura
- * a última INBOUND. Se nenhuma encontrada nos buffer atual, OU se ela é mais
- * velha que 24h, mostra o banner. Não 100% preciso (paginação pode esconder
- * inbound antiga) mas resolve >95% dos casos sem precisar de campo novo no
- * backend.
- */
-function EngagementWindowBanner({
-  channelType,
-  messages,
-}: {
-  channelType: string;
-  messages: Message[];
-}) {
-  // Janela 24h é regra rígida APENAS do WhatsApp Cloud API oficial (Meta).
-  // Canais Zappfy/Uazapi (WHATSAPP_ZAPPFY) não têm essa restrição — banner
-  // ali confunde mais que ajuda.
-  if (channelType !== 'WHATSAPP_OFFICIAL') return null;
-  if (messages.length === 0) return null;
-
-  const lastInbound = [...messages]
-    .reverse()
-    .find((m) => m.direction === 'INBOUND');
-  if (!lastInbound) return null;
-
-  const ageMs = Date.now() - new Date(lastInbound.createdAt).getTime();
-  const ageHours = ageMs / (60 * 60 * 1000);
-  if (ageHours < 24) return null;
-
-  const ageLabel =
-    ageHours < 48
-      ? `${Math.floor(ageHours)}h`
-      : `${Math.floor(ageHours / 24)} dias`;
-
-  return (
-    <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
-      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-      <div className="flex-1 leading-relaxed">
-        <strong>Janela de 24h expirada</strong> — última mensagem do cliente
-        foi há {ageLabel}. WhatsApp só aceita{' '}
-        <strong>templates aprovados</strong> agora. Mensagem de texto livre
-        vai falhar com erro <code className="font-mono text-[11px]">Re-engagement message</code>.
-        Peça pro cliente mandar qualquer mensagem pra reabrir a janela, ou
-        envie um template HSM via Meta Business.
-      </div>
-    </div>
-  );
-}
 
 /**
  * Tooltip humano pra cada status. Especial pra FAILED com motivo conhecido
@@ -434,11 +382,21 @@ export function ChatPanel({
   onToggleProject,
   projectOpen,
 }: ChatPanelProps) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(timer); }, []);
   const queryClient = useQueryClient();
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { on, emit, onReconnect } = useSocket();
   const user = useAuthStore((s) => s.user);
+
+  const { data: notes = [], isError: notesError } = useQuery({ queryKey: ['conversation-notes', conversation.id], queryFn: () => inboxService.listNotes(conversation.id), refetchOnWindowFocus: true });
+  const refreshNotes = useCallback(() => queryClient.invalidateQueries({ queryKey: ['conversation-notes', conversation.id] }), [queryClient, conversation.id]);
+  useEffect(() => on('note:changed', (event: { conversationId: string }) => { if (event.conversationId === conversation.id) void refreshNotes(); }), [on, conversation.id, refreshNotes]);
+  useEffect(() => onReconnect(() => { void refreshNotes(); }), [onReconnect, refreshNotes]);
+  const createNote = async (text: string) => { await inboxService.createNote(conversation.id, text); await refreshNotes(); };
+  const deleteNote = async (id: string) => { try { await inboxService.deleteNote(conversation.id, id); await refreshNotes(); } catch { toast.error('Não foi possível excluir a nota'); } };
 
   // Quantas mensagens pedimos ao backend. A página 1 devolve as N mais
   // recentes, então "carregar histórico" é só aumentar o limite — sem offset,
@@ -865,12 +823,16 @@ export function ChatPanel({
     return d.toLocaleDateString('pt-BR');
   };
 
+  const latestInboundAt = Math.max(new Date(data?.lastInboundAt ?? 0).getTime(), ...messages.filter(m => m.direction === 'INBOUND').map(m => new Date(m.createdAt).getTime()));
+  const windowClosed = conversation.channel.type === 'WHATSAPP_OFFICIAL' && (!latestInboundAt || now - latestInboundAt >= 86400000);
+
   return (
     // min-h-0 é load-bearing: sem ele, o scroll-container interno cresce
     // pelo conteúdo (default min-height de flex children) e empurra o
     // ChatInput pra fora do painel — quebra dramaticamente quando o pai
     // é um modal com altura fixa.
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <ConversationHeader
         conversation={conversation}
         onUpdate={onConversationUpdate}
@@ -880,12 +842,9 @@ export function ChatPanel({
         projectOpen={projectOpen}
       />
 
+      {!conversation.isGroup && <button type="button" aria-expanded={detailsOpen} className="border-b px-4 py-1 text-right text-xs text-primary" onClick={() => setDetailsOpen(!detailsOpen)}>{detailsOpen ? 'Recolher detalhes' : 'Detalhes da conversa'}</button>}
+      {notesError && <p role="alert" className="px-4 text-xs text-amber-700">Não foi possível carregar notas internas.</p>}
       <PendingActionsList conversationId={conversation.id} />
-
-      <EngagementWindowBanner
-        channelType={conversation.channel.type}
-        messages={messages}
-      />
 
       <div
         ref={scrollRef}
@@ -902,7 +861,7 @@ export function ChatPanel({
               Tentar novamente
             </button>
           </div>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && notes.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-zinc-400">
             Nenhuma mensagem ainda
           </div>
@@ -932,9 +891,10 @@ export function ChatPanel({
                   }
                 }
               }
-              const visibleMessages = messages.filter((m) => m.type !== 'REACTION');
+              const visibleMessages = [...messages.filter((m) => m.type !== 'REACTION'), ...notes].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
               let lastDateKey = '';
               return visibleMessages.map((msg) => {
+                if ('authorId' in msg) return <InternalNoteCard key={`note-${msg.id}`} note={msg} userId={user?.id} onDelete={deleteNote} />;
                 const isOutbound = msg.direction === 'OUTBOUND';
                 const StatusIcon = statusIcons[msg.status] || Clock;
                 const reactions = reactionMap.get(msg.externalId || '') || [];
@@ -1260,6 +1220,11 @@ export function ChatPanel({
         />
       )}
       <ChatInput
+        key={conversation.id}
+        onSendNote={createNote}
+        windowClosed={windowClosed}
+        templateChannelId={conversation.channel.type === 'WHATSAPP_OFFICIAL' ? conversation.channelId : undefined}
+        onSendTemplate={async content => { await inboxService.sendMessage({ conversationId: conversation.id, type: 'TEMPLATE', content }); await queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] }); onConversationUpdate(); }}
         onSend={handleSend}
         onSendAudio={handleSendAudio}
         onSendFile={handleSendFile}
@@ -1271,6 +1236,8 @@ export function ChatPanel({
         originChannel={conversation.channel}
         onClose={() => setForwardingMessage(null)}
       />
+    </div>
+    {detailsOpen && !conversation.isGroup && <ConversationDetailsPanel key={conversation.id} conversation={conversation} onUpdate={onConversationUpdate} onClose={() => setDetailsOpen(false)} notes={notes} userId={user?.id} onDeleteNote={deleteNote} onCreateNote={createNote} />}
     </div>
   );
 }

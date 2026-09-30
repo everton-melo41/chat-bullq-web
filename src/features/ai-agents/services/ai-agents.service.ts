@@ -364,20 +364,20 @@ export interface AgentStats {
   handoffs: { sent: number; received: number };
 }
 
-export const DEFAULT_AGENT_MODEL = 'sakana/fugu-ultra-20260615';
+export const DEFAULT_AGENT_MODEL = 'sakana/fugu';
 export const SIMPLE_TASK_MODEL = 'sakana/fugu';
 
 export const CURATED_MODELS = [
   {
     id: DEFAULT_AGENT_MODEL,
-    label: 'Sakana Fugu Ultra',
-    badge: 'Conversas · máxima qualidade',
+    label: 'Fugu — rápido (~5s), recomendado para atendimento',
+    badge: 'Recomendado para atendimento',
     recommendedFor: 'worker',
   },
   {
-    id: SIMPLE_TASK_MODEL,
-    label: 'Sakana Fugu',
-    badge: 'Tarefas simples · mais barato',
+    id: 'sakana/fugu-ultra-20260615',
+    label: 'Fugu Ultra — raciocínio profundo (~40s), não recomendado para chat',
+    badge: 'Raciocínio profundo',
     recommendedFor: 'orchestrator',
   },
 ] as const;
