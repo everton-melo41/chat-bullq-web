@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { aiAgentsService, AiAgent, CURATED_MODELS } from '../services/ai-agents.service';
 import { AgentGroup, agentGroupsService } from '../services/agent-groups.service';
 import { MentionEditor } from './mention-editor';
+import { PromptChecks } from './prompt-checks';
 import { ConfirmDialog, PublishDialog, dangerBtn, primaryBtn, secondaryBtn, inputCls } from './dialogs';
 import { MentionOption, MentionRef, toDisplay, toRaw, listMentions } from './studio.service';
 
@@ -184,7 +185,11 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
         )}
         {publishing && <PublishDialog onClose={() => setPublishing(false)} onConfirm={note => publish(note || undefined)} />}
         {tab === 'prompt' && (
-          <MentionEditor value={form.systemPrompt} onChange={v => set('systemPrompt', v)} refs={refs} options={options} />
+          <div className="space-y-4">
+            <div className="h-[55vh] min-h-[380px]"><MentionEditor value={form.systemPrompt} onChange={v => set('systemPrompt', v)} refs={refs} options={options} /></div>
+            <PromptChecks text={form.systemPrompt} refs={refs} options={options} limit={10_000}
+              onInsert={o => { refs.set(o.label, { type: o.type, id: o.id }); set('systemPrompt', `${form.systemPrompt.replace(/\s*$/, '')} @[${o.label}] `); }} />
+          </div>
         )}
 
         {tab === 'knowledge' && (
