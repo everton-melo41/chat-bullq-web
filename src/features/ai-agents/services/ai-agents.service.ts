@@ -46,7 +46,26 @@ export interface AgentChannelLink {
   channel: { id: string; name: string; type: string };
 }
 
+export interface AgentRevision {
+  id: string;
+  version: number;
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  snapshot: Partial<AiAgent>;
+  createdAt: string;
+  publishedAt: string | null;
+  note: string | null;
+}
+export interface AgentRevisionDiff {
+  lines: { type: 'added' | 'removed' | 'context'; text: string }[];
+  fields: { field: string; before: unknown; after: unknown }[];
+}
 export interface AiAgent {
+  skills?: { skillId: string; requiresApproval: boolean }[];
+  enabledBuiltinTools: string[] | null;
+  publishedRevisionId?: string | null;
+  draftRevisionId?: string | null;
+  publishedRevision?: AgentRevision | null;
+  draftRevision?: AgentRevision | null;
   id: string;
   organizationId: string;
   name: string;
@@ -75,6 +94,8 @@ export interface AiAgent {
 }
 
 export interface CreateAgentInput {
+  skills?: { skillId: string; requiresApproval: boolean }[];
+  enabledBuiltinTools?: string[] | null;
   name: string;
   description?: string;
   kind?: AgentKind;
@@ -126,6 +147,21 @@ export interface AgentRun {
 }
 
 export const aiAgentsService = {
+  async revisions(id: string): Promise<AgentRevision[]> {
+    const { data } = await api.get(`/ai-agents/${id}/revisions`); return data.data ?? data;
+  },
+  async saveDraft(id: string, input: Partial<CreateAgentInput>): Promise<AgentRevision> {
+    const { data } = await api.put(`/ai-agents/${id}/draft`, input); return data.data ?? data;
+  },
+  async publish(id: string, note?: string): Promise<AgentRevision> {
+    const { data } = await api.post(`/ai-agents/${id}/publish`, { note }); return data.data ?? data;
+  },
+  async restore(id: string, version: number): Promise<AgentRevision> {
+    const { data } = await api.post(`/ai-agents/${id}/revisions/${version}/restore`); return data.data ?? data;
+  },
+  async diff(id: string, from: number, to: number): Promise<AgentRevisionDiff> {
+    const { data } = await api.get(`/ai-agents/${id}/revisions/diff`, { params: { from, to } }); return data.data ?? data;
+  },
   async list(): Promise<AiAgent[]> {
     const { data } = await api.get('/ai-agents');
     return data.data ?? data;

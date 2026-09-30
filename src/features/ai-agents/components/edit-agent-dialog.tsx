@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash2, X, Plus, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,6 +10,7 @@ import {
   DEFAULT_AGENT_MODEL,
   DEPARTMENTS,
   type AiAgent,
+  type AgentRevisionDiff,
   type AgentMode,
 } from '../services/ai-agents.service';
 import { aiCatalogService } from '../services/ai-catalog.service';
@@ -23,11 +24,47 @@ interface EditAgentDialogProps {
 }
 
 export function EditAgentDialog({
-  agent,
+  agent: initialAgent,
   onClose,
   onSaved,
 }: EditAgentDialogProps) {
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  const { data: loadedAgent, refetch } = useQuery({
+    queryKey: ['ai-agent-editor', orgId, initialAgent?.id],
+    queryFn: () => aiAgentsService.findOne(initialAgent!.id), enabled: !!initialAgent,
+  });
+  const agent = loadedAgent ?? initialAgent;
+  const editingId = useRef<string | null>(null);
+  const [skillBindings, setSkillBindings] = useState<{ skillId: string; requiresApproval: boolean }[]>([]);
+  const [enabledBuiltinTools, setEnabledBuiltinTools] = useState<string[] | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [note, setNote] = useState('');
+  const [showVersions, setShowVersions] = useState(false);
+  const [diff, setDiff] = useState<AgentRevisionDiff | null>(null);
+  const [fromVersion, setFromVersion] = useState('');
+  const [toVersion, setToVersion] = useState('');
+  const { data: revisions, refetch: reloadVersions } = useQuery({
+    queryKey: ['ai-agent-revisions', orgId, initialAgent?.id],
+    queryFn: () => aiAgentsService.revisions(initialAgent!.id), enabled: !!initialAgent,
+  });
+  const unpublished = dirty || !!agent?.draftRevisionId;
+  const close = () => { if (!unpublished || confirm('Há um rascunho não publicado ou alterações não salvas. Sair da edição?')) onClose(); };
+  useEffect(() => {
+    if (!initialAgent || !unpublished) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    const navigate = (event: MouseEvent) => {
+      const link = (event.target as HTMLElement).closest('a[href]');
+      if (link && !confirm('Há um rascunho não publicado. Sair da edição?')) { event.preventDefault(); event.stopPropagation(); }
+    };
+    window.addEventListener('beforeunload', warn);
+    document.addEventListener('click', navigate, true);
+    return () => { window.removeEventListener('beforeunload', warn); document.removeEventListener('click', navigate, true); };
+  }, [initialAgent, unpublished]);
+  const refreshEditor = async () => {
+    await Promise.all([refetch(), reloadVersions(), queryClient.invalidateQueries({ queryKey: ['ai-agent-skills'] })]);
+    onSaved();
+  };
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [modelId, setModelId] = useState(DEFAULT_AGENT_MODEL);
@@ -59,25 +96,35 @@ export function EditAgentDialog({
   });
 
   useEffect(() => {
-    if (!agent) return;
-    setName(agent.name);
-    setDescription(agent.description ?? '');
-    setModelId(agent.modelId);
-    setSystemPrompt(agent.systemPrompt);
-    setTemperature(agent.temperature);
-    setParentAgentId(agent.parentAgentId ?? '');
-    setDepartment(agent.department ?? '');
-    setSquad(agent.squad ?? '');
-    setOperationalContext(agent.operationalContext ?? '');
-    setOperationalContextUpdatedAt(agent.operationalContextUpdatedAt ?? null);
-  }, [agent]);
+    if (!initialAgent) { editingId.current = null; return; }
+    if (!agent || (dirty && editingId.current === agent.id)) return;
+    if (editingId.current !== agent.id) { setDiff(null); setNote(''); setShowVersions(false); setFromVersion(''); setToVersion(''); }
+    editingId.current = agent.id;
+    const editable = { ...agent, ...agent.publishedRevision?.snapshot, ...agent.draftRevision?.snapshot };
+    setEnabledBuiltinTools(editable.enabledBuiltinTools ?? null);
+    setSkillBindings(editable.skills ?? []);
+    setDirty(false);
+    setName(editable.name);
+    setDescription(editable.description ?? '');
+    setModelId(editable.modelId);
+    setSystemPrompt(editable.systemPrompt);
+    setTemperature(editable.temperature);
+    setParentAgentId(editable.parentAgentId ?? '');
+    setDepartment(editable.department ?? '');
+    setSquad(editable.squad ?? '');
+    setOperationalContext(editable.operationalContext ?? '');
+    setOperationalContextUpdatedAt(editable.operationalContextUpdatedAt ?? null);
+  }, [agent, initialAgent]);
 
-  if (!agent) return null;
+  if (!initialAgent || !agent) return null;
+  if (!loadedAgent) return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"><div className="rounded bg-white p-6 text-zinc-900">Carregando rascunho… <button onClick={onClose}>Fechar</button></div></div>;
 
-  const handleSave = async () => {
+  const handleSave = async (publish = false) => {
     setSaving(true);
     try {
-      await aiAgentsService.update(agent.id, {
+      await aiAgentsService.saveDraft(agent.id, {
+        enabledBuiltinTools,
+        skills: skillBindings,
         name,
         description,
         modelId,
@@ -88,8 +135,11 @@ export function EditAgentDialog({
         squad: squad.trim() || null,
         operationalContext: operationalContext.trim() || null,
       });
-      toast.success('Agente atualizado');
-      onSaved();
+      if (publish) await aiAgentsService.publish(agent.id, note.trim() || undefined);
+      setDirty(false);
+      setNote('');
+      await refreshEditor();
+      toast.success(publish ? 'Agente publicado' : 'Rascunho salvo');
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Erro ao salvar');
     } finally {
@@ -148,14 +198,40 @@ export function EditAgentDialog({
             Editar agente
           </h3>
           <button
-            onClick={onClose}
+            onClick={close}
             className="rounded p-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="space-y-4 px-6 py-5">
+        <div className="space-y-4 px-6 py-5" onChange={event => { const el = event.target as HTMLElement; if (!el.closest('[aria-label="Versões"]')) setDirty(true); }}>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="rounded bg-amber-100 px-2 py-1 text-sm text-amber-900">{unpublished ? 'Rascunho' : `Publicado v${agent.publishedRevision?.version ?? '—'}`}</span>
+            {unpublished && agent.publishedRevision && <span className="text-xs">Em uso: Publicado v{agent.publishedRevision.version}</span>}
+            <button onClick={() => setShowVersions(!showVersions)} className="rounded border px-3 py-1">Versões</button>
+          </div>
+          {showVersions && <section aria-label="Versões" className="space-y-3 rounded border p-3">
+            {(revisions ?? []).map(r => <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
+              <span>v{r.version} · {r.status} · {new Date(r.publishedAt ?? r.createdAt).toLocaleString()} {r.note && `· ${r.note}`}</span>
+              {r.status !== 'DRAFT' && <button disabled={saving} className="rounded border px-2 py-1" onClick={async () => {
+                if (unpublished && !confirm('Substituir o rascunho atual por esta versão?')) return;
+                setSaving(true);
+                try { await aiAgentsService.restore(agent.id, r.version); setDirty(false); await refreshEditor(); toast.success('Versão restaurada como rascunho'); }
+                catch { toast.error('Erro ao restaurar versão'); } finally { setSaving(false); }
+              }}>Restaurar como rascunho</button>}
+            </div>)}
+            <div className="flex gap-2">
+              <select aria-label="Versão anterior" value={fromVersion} onChange={e => setFromVersion(e.target.value)}><option value="">De…</option>{revisions?.map(r => <option key={r.id} value={r.version}>v{r.version}</option>)}</select>
+              <select aria-label="Versão posterior" value={toVersion} onChange={e => setToVersion(e.target.value)}><option value="">Para…</option>{revisions?.map(r => <option key={r.id} value={r.version}>v{r.version}</option>)}</select>
+              <button disabled={!fromVersion || !toVersion} onClick={async () => { try { setDiff(await aiAgentsService.diff(agent.id, Number(fromVersion), Number(toVersion))); } catch { toast.error('Erro ao comparar versões'); } }}>Comparar</button>
+            </div>
+            {diff && <div className="max-h-80 overflow-auto font-mono text-xs">
+              {diff.lines.map((line, i) => <pre key={i} className={`whitespace-pre-wrap ${line.type === 'added' ? 'bg-green-100 text-green-900' : line.type === 'removed' ? 'bg-red-100 text-red-900' : ''}`}>{line.type === 'added' ? '+ ' : line.type === 'removed' ? '- ' : '  '}{line.text}</pre>)}
+              {diff.fields.map(f => <div key={f.field} className="mt-2"><strong>{f.field}</strong><pre className="whitespace-pre-wrap bg-red-100 text-red-900">- {JSON.stringify(f.before)}</pre><pre className="whitespace-pre-wrap bg-green-100 text-green-900">+ {JSON.stringify(f.after)}</pre></div>)}
+            </div>}
+          </section>}
+          <label className="block text-sm">Nota da publicação (opcional)<input maxLength={2000} value={note} onChange={e => setNote(e.target.value)} className="mt-1 w-full rounded border bg-transparent px-3 py-2" /></label>
           <div>
             <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
               Nome
@@ -326,7 +402,7 @@ export function EditAgentDialog({
           </div>
 
           {agent && (
-            <AgentSkillsAndTools agentId={agent.id} />
+            <AgentSkillsAndTools agentId={agent.id} enabledBuiltinTools={enabledBuiltinTools} onToolsChange={setEnabledBuiltinTools} bindings={skillBindings} onBindingsChange={next => { setSkillBindings(next); setDirty(true); }} />
           )}
 
           <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
@@ -419,18 +495,19 @@ export function EditAgentDialog({
             <Trash2 className="h-3.5 w-3.5" /> Excluir
           </button>
           <div className="flex items-center gap-2">
+            <button disabled={saving} onClick={() => handleSave(true)} className="rounded bg-green-700 px-3 py-1.5 text-sm text-white disabled:opacity-50">Publicar</button>
             <button
-              onClick={onClose}
+              onClick={close}
               className="rounded-md px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
               Fechar
             </button>
             <button
-              onClick={handleSave}
+              onClick={() => handleSave()}
               disabled={saving}
               className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {saving ? 'Salvando…' : 'Salvar'}
+              {saving ? 'Salvando…' : 'Salvar rascunho'}
             </button>
           </div>
         </div>
@@ -450,187 +527,45 @@ function formatRelative(iso: string): string {
   return `há ${Math.floor(ageDays / 30)} meses`;
 }
 
-function AgentSkillsAndTools({ agentId }: { agentId: string }) {
-  const [skillIds, setSkillIds] = useState<string[]>([]);
-  const [savingSkills, setSavingSkills] = useState(false);
-  const queryClient = useQueryClient();
-
-  const { data: skills } = useQuery({
-    queryKey: ['ai-skills'],
-    queryFn: () => aiCatalogService.listSkills(),
+function AgentSkillsAndTools({ agentId, enabledBuiltinTools, onToolsChange, bindings, onBindingsChange }: {
+  agentId: string;
+  enabledBuiltinTools: string[] | null;
+  onToolsChange: (tools: string[] | null) => void;
+  bindings: { skillId: string; requiresApproval: boolean }[];
+  onBindingsChange: (bindings: { skillId: string; requiresApproval: boolean }[]) => void;
+}) {
+  const orgId = useOrgId();
+  const { data: skills, isError: skillsError } = useQuery({
+    queryKey: ['ai-skills', orgId], queryFn: () => aiCatalogService.listSkills(),
   });
-
-  // Bindings (agent, skill) carregam o estado de `requiresApproval` por
-  // skill já atribuída. Refetch agressivo porque mudança aqui é raríssima
-  // mas crítica (define se executa direto ou cria PendingAction).
-  const { data: bindings } = useQuery({
-    queryKey: ['ai-agent-skills', agentId],
-    queryFn: () => aiAgentsService.listAgentSkills(agentId),
-    enabled: !!agentId,
-  });
-
   const { data: builtInActions, isError: builtInsError } = useQuery({
-    queryKey: ['ai-agent-built-ins', agentId],
+    queryKey: ['ai-agent-built-ins', orgId, agentId],
     queryFn: () => aiAgentsService.listBuiltInActions(agentId),
-    enabled: !!agentId,
   });
-
-  const approvalByskillId = new Map(
-    (bindings ?? []).map((b) => [b.skillId, b.requiresApproval]),
-  );
-
-  useEffect(() => {
-    if (!skills) return;
-    const ids = skills
-      .filter((s) => (s.agents ?? []).some((a) => a.agent.id === agentId))
-      .map((s) => s.id);
-    setSkillIds(ids);
-  }, [skills, agentId]);
-
-  const toggleSkill = (id: string) =>
-    setSkillIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-
-  const handleSaveSkills = async () => {
-    setSavingSkills(true);
-    try {
-      await aiCatalogService.setAgentSkills(agentId, skillIds);
-      // Recarrega bindings — skills atribuídas mudaram, requiresApproval
-      // de skills novas é false por padrão.
-      await queryClient.invalidateQueries({
-        queryKey: ['ai-agent-skills', agentId],
-      });
-      toast.success('Skills atualizadas');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Erro');
-    } finally {
-      setSavingSkills(false);
-    }
-  };
-
-  const toggleApproval = async (skillId: string, next: boolean) => {
-    try {
-      await aiAgentsService.setSkillApproval(agentId, skillId, next);
-      await queryClient.invalidateQueries({
-        queryKey: ['ai-agent-skills', agentId],
-      });
-      toast.success(
-        next
-          ? 'Skill agora exige aprovação humana antes de executar'
-          : 'Skill volta a executar automaticamente',
-      );
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Erro ao salvar');
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800" aria-label="Ações built-in disponíveis">
-        <h4 className="text-sm font-medium">Ações built-in disponíveis</h4>
-        <p className="mt-1 text-xs text-zinc-500">Disponíveis automaticamente para este agente. Cite o nome no prompt para orientar seu uso. Lista somente leitura.</p>
-        {builtInsError && <p className="mt-2 text-xs text-red-500">Não foi possível carregar as ações.</p>}
-        <dl className="mt-3 space-y-3">
-          {(builtInActions ?? []).map(action => <div key={action.name}>
-            <dt className="font-mono text-xs font-semibold">{action.name}</dt>
-            <dd className="mt-1 text-xs text-zinc-500">{action.description}</dd>
-          </div>)}
-        </dl>
-      </section>
-      <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Skills atribuídas ({skillIds.length})
-          </h4>
-          <button
-            onClick={handleSaveSkills}
-            disabled={savingSkills}
-            className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {savingSkills ? '…' : 'Salvar skills'}
-          </button>
-        </div>
-        <p className="mt-1 text-[11px] text-zinc-500">
-          Cada skill é uma função invocável (ex: /resetPassword) ligada à sua
-          tool (provider). Built-in essenciais (reply/transfer/tag) são
-          incluídas automaticamente.
-        </p>
-        <p className="mt-2 text-[10px] text-zinc-400">
-          💡 Skills marcadas com <ShieldCheck className="inline h-3 w-3 text-amber-600" />{' '}
-          exigem aprovação humana via inbox antes de executar — útil pra ações
-          irreversíveis (liberar acesso, resetar senha). Padrão: executa direto.
-        </p>
-        <div className="mt-2 max-h-72 overflow-y-auto">
-          {(skills ?? []).map((s) => {
-            const checked = skillIds.includes(s.id);
-            const requiresApproval = approvalByskillId.get(s.id) ?? false;
-            return (
-              <div
-                key={s.id}
-                className={`flex items-start gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-white dark:hover:bg-zinc-800 ${
-                  checked ? 'bg-white dark:bg-zinc-800' : ''
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => toggleSkill(s.id)}
-                  className="mt-0.5 h-3.5 w-3.5 cursor-pointer"
-                />
-                <div className="flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-zinc-900 dark:text-zinc-100">
-                      {s.name}
-                    </span>
-                    {s.category && (
-                      <span className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[9px] uppercase text-zinc-600 dark:bg-zinc-700">
-                        {s.category}
-                      </span>
-                    )}
-                    <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] uppercase text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-                      {s.source}
-                    </span>
-                    {checked && (
-                      <button
-                        type="button"
-                        onClick={() => toggleApproval(s.id, !requiresApproval)}
-                        className={`ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                          requiresApproval
-                            ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300'
-                            : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400'
-                        }`}
-                        title={
-                          requiresApproval
-                            ? 'Clique pra desligar — skill volta a executar automaticamente'
-                            : 'Clique pra ligar — skill vai exigir aprovação humana antes de executar'
-                        }
-                      >
-                        <ShieldCheck className="h-3 w-3" />
-                        {requiresApproval ? 'Aprovação' : 'Auto'}
-                      </button>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-zinc-500 line-clamp-1">
-                    {s.description}
-                    {s.tool && (
-                      <>
-                        {' · via '}
-                        <code className="font-mono">{s.tool.name}</code>
-                      </>
-                    )}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-          {(skills ?? []).length === 0 && (
-            <p className="px-2 py-3 text-center text-xs text-zinc-400">
-              Nenhuma skill cadastrada. Crie em Jarvis &gt; Skills.
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="space-y-3">
+    <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800" aria-label="Ações built-in disponíveis">
+      <h4 className="text-sm font-medium">Ações built-in disponíveis</h4>
+      <p className="mt-1 text-xs text-zinc-500">Marque as ações permitidas. As alterações só entram em vigor após publicar.</p>
+      {builtInsError && <p className="text-xs text-red-500">Não foi possível carregar as ações.</p>}
+      <dl className="mt-3 space-y-3">{(builtInActions ?? []).map(action => <div key={action.name}>
+        <dt className="font-mono text-xs font-semibold"><label><input type="checkbox" checked={enabledBuiltinTools === null || enabledBuiltinTools.includes(action.name)} onChange={e => {
+          const current = enabledBuiltinTools ?? (builtInActions ?? []).map(a => a.name);
+          onToolsChange(e.target.checked ? [...current, action.name] : current.filter(n => n !== action.name));
+        }} /> {action.name}</label></dt>
+        <dd className="mt-1 text-xs text-zinc-500">{action.description}</dd>
+      </div>)}</dl>
+    </section>
+    <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800" aria-label="Skills atribuídas">
+      <h4 className="text-sm font-medium">Skills atribuídas ({bindings.length})</h4>
+      <p className="mt-1 text-xs text-zinc-500">Os vínculos e a exigência de aprovação serão salvos junto com o rascunho.</p>
+      {skillsError && <p className="text-xs text-red-500">Não foi possível carregar as skills.</p>}
+      <div className="mt-2 max-h-72 overflow-y-auto">{(skills ?? []).map(skill => {
+        const binding = bindings.find(b => b.skillId === skill.id);
+        return <div key={skill.id} className="flex items-start gap-2 rounded px-2 py-2 text-xs">
+          <label className="flex-1"><input type="checkbox" checked={!!binding} onChange={e => onBindingsChange(e.target.checked ? [...bindings, { skillId: skill.id, requiresApproval: false }] : bindings.filter(b => b.skillId !== skill.id))} /> <strong>{skill.name}</strong><span className="mt-1 block text-zinc-500">{skill.description}</span></label>
+          {binding && <label className="flex items-center gap-1 text-amber-700 dark:text-amber-300"><ShieldCheck className="h-3 w-3" /><input type="checkbox" checked={binding.requiresApproval} onChange={e => onBindingsChange(bindings.map(b => b.skillId === skill.id ? { ...b, requiresApproval: e.target.checked } : b))} /> Exigir aprovação</label>}
+        </div>;
+      })}</div>
+    </section>
+  </div>;
 }

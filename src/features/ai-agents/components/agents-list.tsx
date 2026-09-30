@@ -129,7 +129,7 @@ export function AgentsList() {
   const handleToggleActive = async (agent: AiAgent) => {
     try {
       await aiAgentsService.update(agent.id, { isActive: !agent.isActive });
-      toast.success(agent.isActive ? 'Agente desativado' : 'Agente ativado');
+      toast.success('Alteração salva no rascunho. Abra a edição e publique para aplicar.');
       refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao alternar');

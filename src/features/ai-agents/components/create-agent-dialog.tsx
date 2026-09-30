@@ -89,7 +89,7 @@ export function CreateAgentDialog({
         department: department || null,
         squad: squad.trim() || null,
       });
-      toast.success('Agente criado!');
+      toast.success('Rascunho criado. Publique na edição para ativar o agente.');
       reset();
       onCreated();
       onClose();
@@ -136,6 +136,7 @@ export function CreateAgentDialog({
 
         <div className="space-y-4 px-6 py-5">
           <div>
+            <p className="mb-3 text-xs text-zinc-500">O agente será criado como rascunho. Ações de ofertas, bônus, acesso de membros e client-ops começam desmarcadas; revise as ações na edição antes de publicar.</p>
             <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
               Nome *
             </label>
