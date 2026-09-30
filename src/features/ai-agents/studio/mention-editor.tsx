@@ -80,11 +80,11 @@ export function MentionEditor({ value, onChange, refs, options, limit = 10_000 }
           onBlur={() => setTimeout(() => setQuery(null), 150)}
           spellCheck={false}
           placeholder={'Descreva como o agente deve atender.\n\nDigite @ para citar outro agente, uma etiqueta, um departamento, uma etapa do funil ou uma ação (resumo, salvar dados do lead, transferir para humano...).'}
-          className="h-full min-h-[360px] w-full resize-none rounded-lg border border-zinc-200 bg-white p-4 font-mono text-sm leading-6 text-zinc-900 outline-none focus:border-primary dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
+          className="h-full min-h-[360px] w-full placeholder:text-zinc-500 dark:placeholder:text-zinc-400 resize-none rounded-lg border border-zinc-300 bg-white p-4 text-[15px] leading-7 text-zinc-900 outline-none focus:border-primary dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
         />
         {query != null && matches.length > 0 && (
-          <div className="absolute bottom-4 left-4 z-20 w-80 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
-            <p className="border-b border-zinc-100 px-3 py-1.5 text-[11px] uppercase tracking-wide text-zinc-400 dark:border-zinc-800">Mencionar</p>
+          <div className="absolute bottom-4 left-4 z-20 w-80 overflow-hidden rounded-lg border border-zinc-300 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+            <p className="border-b border-zinc-100 px-3 py-1.5 text-xs text-zinc-600 dark:text-zinc-400 dark:border-zinc-700">Mencionar</p>
             {matches.map((o, i) => (
               <button
                 key={`${o.type}:${o.id}`}
@@ -101,7 +101,7 @@ export function MentionEditor({ value, onChange, refs, options, limit = 10_000 }
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {chips.length === 0 && <span className="text-xs text-zinc-400">Nenhuma menção. Digite @ no texto para citar agentes, etiquetas ou ações.</span>}
+        {chips.length === 0 && <span className="text-xs text-zinc-600 dark:text-zinc-400">Nenhuma menção. Digite @ no texto para citar agentes, etiquetas ou ações.</span>}
         {chips.map(c => (
           <span
             key={c.label}

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { aiAgentsService, AiAgent, CURATED_MODELS } from '../services/ai-agents.service';
 import { AgentGroup, agentGroupsService } from '../services/agent-groups.service';
 import { MentionEditor } from './mention-editor';
+import { PublishDialog, primaryBtn, secondaryBtn, inputCls } from './dialogs';
 import { MentionOption, MentionRef, toDisplay, toRaw, listMentions } from './studio.service';
 
 type Tab = 'prompt' | 'knowledge' | 'settings';
@@ -47,6 +48,7 @@ export function AgentEditor({ agent, groups, options, onChanged }: {
   const [refs] = useState(() => initial.refs);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState<'draft' | 'publish' | null>(null);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => { const f = formFrom(agent); setForm(f.form); f.refs.forEach((v, k) => refs.set(k, v)); setDirty(false); }, [agent]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -84,9 +86,14 @@ export function AgentEditor({ agent, groups, options, onChanged }: {
     finally { setSaving(null); }
   };
 
-  const publish = async () => {
+  const askPublish = () => {
     if (invalidCount) return toast.error('Corrija as menções em vermelho antes de publicar.');
-    const note = window.prompt('Nota desta versão (opcional):', '') ?? undefined;
+    if (!form.name.trim()) return toast.error('Dê um nome ao agente.');
+    setPublishing(true);
+  };
+
+  const publish = async (note?: string) => {
+    setPublishing(false);
     setSaving('publish');
     try {
       if (dirty || !hasDraft) await aiAgentsService.saveDraft(agent.id, payload());
@@ -119,43 +126,46 @@ export function AgentEditor({ agent, groups, options, onChanged }: {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+      <div className="flex flex-wrap items-center gap-3 border-b border-zinc-300 px-6 py-4 dark:border-zinc-700">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold text-zinc-900 dark:text-zinc-100">{form.name || 'Sem nome'}</h2>
-          <p className="text-xs text-zinc-500">
-            {group ? group.name : 'Sem matéria'}{group?.initialAgentId === agent.id ? ' · agente inicial' : ''}
-            {' · '}
-            {published ? <span className="text-emerald-600">Publicado v{published.version}</span> : <span className="text-amber-600">Nunca publicado</span>}
-            {(hasDraft || dirty) && <span className="text-amber-600"> · rascunho {dirty ? 'não salvo' : 'salvo'}</span>}
-          </p>
+          <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
+            <span className="rounded bg-zinc-100 px-2 py-0.5 font-medium text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100">{group ? group.name : 'Sem matéria'}</span>
+            {group?.initialAgentId === agent.id && <span className="rounded bg-amber-100 px-2 py-0.5 font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">Agente inicial</span>}
+            {published
+              ? <span className="rounded bg-emerald-100 px-2 py-0.5 font-medium text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100">Publicado v{published.version}</span>
+              : <span className="rounded bg-amber-100 px-2 py-0.5 font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">Ainda não publicado</span>}
+            {(hasDraft || dirty) && <span className="rounded bg-sky-100 px-2 py-0.5 font-medium text-sky-900 dark:bg-sky-900/50 dark:text-sky-100">{dirty ? 'Alterações não salvas' : 'Rascunho salvo'}</span>}
+          </div>
         </div>
-        <button type="button" onClick={saveDraft} disabled={!!saving} className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+        <button type="button" onClick={saveDraft} disabled={!!saving} className={secondaryBtn}>
           {saving === 'draft' ? <Loader2 className="inline h-4 w-4 animate-spin" /> : 'Salvar rascunho'}
         </button>
-        <button type="button" onClick={publish} disabled={!!saving} className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50">
+        <button type="button" onClick={askPublish} disabled={!!saving} className={primaryBtn}>
           {saving === 'publish' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Publicar
         </button>
       </div>
 
-      <div className="flex gap-1 border-b border-zinc-200 px-6 dark:border-zinc-800">
+      <div className="flex gap-1 border-b border-zinc-300 px-6 dark:border-zinc-700">
         {tabs.map(t => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)}
-            className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm ${tab === t.id ? 'border-primary font-medium text-zinc-900 dark:text-zinc-100' : 'border-transparent text-zinc-500 hover:text-zinc-800'}`}>
+            className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm ${tab === t.id ? 'border-primary font-medium text-zinc-900 dark:text-zinc-100' : 'border-transparent text-zinc-600 dark:text-zinc-300 hover:text-zinc-800'}`}>
             <t.icon className="h-4 w-4" /> {t.label}
           </button>
         ))}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
+        {publishing && <PublishDialog onClose={() => setPublishing(false)} onConfirm={note => publish(note || undefined)} />}
         {tab === 'prompt' && (
           <MentionEditor value={form.systemPrompt} onChange={v => set('systemPrompt', v)} refs={refs} options={options} />
         )}
 
         {tab === 'knowledge' && (
           <div className="mx-auto mt-10 max-w-md rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-            <BookOpen className="mx-auto h-8 w-8 text-zinc-400" />
+            <BookOpen className="mx-auto h-8 w-8 text-zinc-600 dark:text-zinc-400" />
             <p className="mt-3 font-medium text-zinc-800 dark:text-zinc-100">Em breve</p>
-            <p className="mt-1 text-sm text-zinc-500">Aqui você vai enviar PDFs e textos (listas de doenças, FAQ, quebra de objeções) para o agente consultar.</p>
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Aqui você vai enviar PDFs e textos (listas de doenças, FAQ, quebra de objeções) para o agente consultar.</p>
           </div>
         )}
 
@@ -190,14 +200,14 @@ export function AgentEditor({ agent, groups, options, onChanged }: {
   );
 }
 
-const input = 'w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-zinc-700 dark:bg-zinc-900';
+const input = inputCls;
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
       <label className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{label}</label>
       {children}
-      {hint && <p className="text-xs text-zinc-500">{hint}</p>}
+      {hint && <p className="text-xs text-zinc-600 dark:text-zinc-300">{hint}</p>}
     </div>
   );
 }
@@ -218,22 +228,22 @@ function Revisions({ agentId, onRestored }: { agentId: string; onRestored: () =>
   };
 
   return (
-    <div className="space-y-2 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+    <div className="space-y-2 border-t border-zinc-300 pt-6 dark:border-zinc-700">
       <h3 className="flex items-center gap-1.5 text-sm font-medium text-zinc-800 dark:text-zinc-100"><History className="h-4 w-4" /> Histórico de versões</h3>
       {(revisions ?? []).map(r => (
-        <div key={r.id} className="rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
+        <div key={r.id} className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700">
           <div className="flex items-center gap-2">
             <span className="font-medium">v{r.version}</span>
             <span className={`rounded-full px-2 py-0.5 text-[10px] ${r.status === 'PUBLISHED' ? 'bg-emerald-100 text-emerald-800' : r.status === 'DRAFT' ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-600'}`}>
               {r.status === 'PUBLISHED' ? 'publicada' : r.status === 'DRAFT' ? 'rascunho' : 'arquivada'}
             </span>
-            <span className="text-xs text-zinc-500">{new Date(r.publishedAt ?? r.createdAt).toLocaleString('pt-BR')}</span>
+            <span className="text-xs text-zinc-600 dark:text-zinc-300">{new Date(r.publishedAt ?? r.createdAt).toLocaleString('pt-BR')}</span>
             <span className="ml-auto flex gap-2 text-xs">
               {published && r.version !== published.version && <button type="button" onClick={() => setDiffOf(diffOf === r.version ? null : r.version)} className="text-primary hover:underline">comparar com a publicada</button>}
               {r.status === 'ARCHIVED' && <button type="button" onClick={() => restore(r.version)} className="text-primary hover:underline">restaurar</button>}
             </span>
           </div>
-          {r.note && <p className="mt-1 text-xs text-zinc-500">{r.note}</p>}
+          {r.note && <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">{r.note}</p>}
           {diffOf === r.version && diff && (
             <pre className="mt-2 max-h-64 overflow-auto rounded bg-zinc-50 p-2 text-xs dark:bg-zinc-900">
               {diff.lines.filter(l => l.type !== 'context').map((l, i) => (
