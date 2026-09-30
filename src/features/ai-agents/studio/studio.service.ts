@@ -73,3 +73,32 @@ export const MENTION_STYLE: Record<MentionType, { chip: string; name: string }> 
   stage: { chip: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200', name: 'etapa' },
   action: { chip: 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100', name: 'ação' },
 };
+
+/* ── Fluxo entre agentes, derivado das menções @agente nos prompts publicados ── */
+
+const AGENT_RE = /@\[[^\]\n]{1,80}\]\(agent:([A-Za-z0-9_-]{1,64})\)/g;
+
+/** Para cada agente, os agentes que ele cita (para quem pode passar a conversa). */
+export function agentLinks(agents: { id: string; systemPrompt?: string | null }[]): Map<string, string[]> {
+  const ids = new Set(agents.map(a => a.id));
+  return new Map(agents.map(a => [a.id, [...new Set([...(a.systemPrompt ?? '').matchAll(AGENT_RE)].map(m => m[1]))].filter(id => id !== a.id && ids.has(id))]));
+}
+
+/**
+ * Etapa de cada membro da matéria: 1 = agente inicial, 2 = citado pelo inicial,
+ * e assim por diante (seguindo só agentes da própria matéria). Sem etapa =
+ * ninguém da matéria passa a conversa para ele.
+ */
+export function stepsInGroup(initialId: string, memberIds: string[], links: Map<string, string[]>): Map<string, number> {
+  const members = new Set(memberIds);
+  const steps = new Map<string, number>([[initialId, 1]]);
+  let frontier = [initialId];
+  while (frontier.length) {
+    const next: string[] = [];
+    for (const id of frontier) for (const t of links.get(id) ?? []) {
+      if (members.has(t) && !steps.has(t)) { steps.set(t, steps.get(id)! + 1); next.push(t); }
+    }
+    frontier = next;
+  }
+  return steps;
+}

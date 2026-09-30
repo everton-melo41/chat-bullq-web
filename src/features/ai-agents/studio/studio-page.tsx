@@ -8,7 +8,7 @@ import { aiAgentsService, AiAgent } from '../services/ai-agents.service';
 import { agentGroupsService } from '../services/agent-groups.service';
 import { AgentEditor } from './agent-editor';
 import { TestChat } from './test-chat';
-import { studioService } from './studio.service';
+import { agentLinks, stepsInGroup, studioService } from './studio.service';
 import { NewAgentDialog, NewGroupDialog, primaryBtn, secondaryBtn } from './dialogs';
 
 /**
@@ -35,6 +35,13 @@ export function StudioPage() {
   const groups = groupsQ.data ?? [];
   const grouped = new Set(groups.flatMap(g => g.members.map(m => m.agentId)));
   const ungrouped = agents.filter(a => !grouped.has(a.id));
+  const links = useMemo(() => agentLinks(allAgents), [allAgents]);
+  const groupOf = (id: string) => groups.find(g => g.members.some(m => m.agentId === id));
+  const nameOf = (id: string) => allAgents.find(a => a.id === id)?.name ?? 'agente removido';
+  const flowFor = (id: string) => ({
+    passesTo: (links.get(id) ?? []).map(t => ({ id: t, name: nameOf(t), group: groupOf(t)?.name ?? null, sameGroup: groupOf(t)?.id === groupOf(id)?.id })),
+    receivesFrom: [...links].filter(([, ts]) => ts.includes(id)).map(([from]) => ({ id: from, name: nameOf(from), group: groupOf(from)?.name ?? null, sameGroup: groupOf(from)?.id === groupOf(id)?.id })),
+  });
 
   const refreshAll = () => {
     void qc.invalidateQueries({ queryKey: ['ai-agents'] });
@@ -45,17 +52,22 @@ export function StudioPage() {
   const created = (agentId: string) => { setDialog(null); refreshAll(); setSelectedId(agentId); };
   const toggle = (id: string) => setCollapsed(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  const AgentRow = ({ a, initial }: { a: { id: string; name: string; publishedRevisionId?: string | null }; initial?: boolean }) => {
+  const AgentRow = ({ a, initial, step, external }: { a: { id: string; name: string; publishedRevisionId?: string | null }; initial?: boolean; step?: number | null; external?: number }) => {
     const active = selectedId === a.id;
     return (
       <button type="button" onClick={() => setSelectedId(a.id)} aria-current={active ? 'true' : undefined}
         className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${active
           ? 'bg-primary/15 font-semibold text-zinc-950 dark:text-white'
           : 'text-zinc-800 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800'}`}>
-        {initial
-          ? <Star aria-label="Agente inicial" className="h-4 w-4 shrink-0 fill-amber-500 text-amber-500" />
-          : <span className="w-4 shrink-0" />}
+        {step != null && (
+          <span title={initial ? 'Atende primeiro' : `Recebe a conversa na etapa ${step}`}
+            className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center gap-0.5 rounded-full px-1.5 text-xs font-semibold ${initial ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100' : 'bg-violet-100 text-violet-900 dark:bg-violet-900/60 dark:text-violet-100'}`}>
+            {initial && <Star className="h-3 w-3 fill-amber-500 text-amber-500" />}{step}º
+          </span>
+        )}
+        {step === null && <span title="Nenhum agente desta matéria cita este agente" className="shrink-0 rounded-full border border-dashed border-zinc-400 px-1.5 text-xs text-zinc-600 dark:border-zinc-500 dark:text-zinc-300">–</span>}
         <span className="truncate">{a.name}</span>
+        {!!external && <span title="Também passa a conversa para agente de outra matéria" className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-medium text-sky-900 dark:bg-sky-900/50 dark:text-sky-100">↗ outra matéria</span>}
         {!a.publishedRevisionId && <span className="ml-auto shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">rascunho</span>}
       </button>
     );
@@ -87,7 +99,9 @@ export function StudioPage() {
           )}
 
           {groups.map(g => {
-            const members = g.members.filter(m => m.agent.name.toLowerCase().includes(q));
+            const steps = stepsInGroup(g.initialAgentId, g.members.map(m => m.agentId), links);
+            const members = g.members.filter(m => m.agent.name.toLowerCase().includes(q))
+              .sort((x, y) => (steps.get(x.agentId) ?? 99) - (steps.get(y.agentId) ?? 99));
             const open = !collapsed.has(g.id);
             return (
               <section key={g.id}>
@@ -104,7 +118,8 @@ export function StudioPage() {
                   </button>
                 </div>
                 {open && <div className="mt-1 space-y-0.5">{members.map(m => (
-                  <AgentRow key={m.agentId} a={{ id: m.agentId, name: m.agent.name, publishedRevisionId: m.agent.publishedRevisionId }} initial={g.initialAgentId === m.agentId} />
+                  <AgentRow key={m.agentId} a={{ id: m.agentId, name: m.agent.name, publishedRevisionId: m.agent.publishedRevisionId }} initial={g.initialAgentId === m.agentId}
+                    step={steps.get(m.agentId) ?? null} external={(links.get(m.agentId) ?? []).filter(t => groupOf(t)?.id !== g.id).length} />
                 ))}</div>}
               </section>
             );
@@ -126,7 +141,7 @@ export function StudioPage() {
 
         <p className="flex items-start gap-1.5 border-t border-zinc-300 p-3 text-xs leading-5 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
           <Star className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-amber-500 text-amber-500" />
-          <span>A estrela marca quem atende primeiro na matéria. Para passar a conversa a outro agente, cite-o no prompt com @.</span>
+          <span>O número é a etapa em que o agente entra: 1º atende primeiro, os seguintes recebem quando alguém os cita no prompt com @. Pode citar agentes de outras matérias.</span>
         </p>
       </aside>
 
@@ -141,7 +156,7 @@ export function StudioPage() {
         {selectedId && agentQ.isLoading && <Loader2 className="mx-auto mt-10 h-5 w-5 animate-spin text-zinc-500" />}
         {selectedId && agentQ.data && (
           <AgentEditor key={agentQ.data.id + (agentQ.data.draftRevisionId ?? '') + (agentQ.data.publishedRevisionId ?? '')}
-            agent={agentQ.data} groups={groups} options={optionsQ.data ?? []} onChanged={() => { refreshAll(); void agentQ.refetch(); }} />
+            agent={agentQ.data} groups={groups} options={optionsQ.data ?? []} flow={flowFor(agentQ.data.id)} onOpenAgent={setSelectedId} onChanged={() => { refreshAll(); void agentQ.refetch(); }} />
         )}
       </main>
 

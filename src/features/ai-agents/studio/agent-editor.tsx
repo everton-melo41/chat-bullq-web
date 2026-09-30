@@ -38,8 +38,11 @@ function formFrom(agent: AiAgent): { form: Form; refs: Map<string, MentionRef> }
   };
 }
 
-export function AgentEditor({ agent, groups, options, onChanged }: {
+export interface FlowLink { id: string; name: string; group: string | null; sameGroup: boolean }
+
+export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAgent }: {
   agent: AiAgent; groups: AgentGroup[]; options: MentionOption[]; onChanged: () => void;
+  flow?: { passesTo: FlowLink[]; receivesFrom: FlowLink[] }; onOpenAgent?: (id: string) => void;
 }) {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('prompt');
@@ -145,6 +148,13 @@ export function AgentEditor({ agent, groups, options, onChanged }: {
           {saving === 'publish' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Publicar
         </button>
       </div>
+
+      {flow && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-zinc-300 bg-zinc-50 px-6 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-900/60">
+          <FlowList label="Recebe de" empty={group?.initialAgentId === agent.id ? 'Ninguém: atende primeiro na matéria' : 'Ninguém cita este agente ainda'} items={flow.receivesFrom} onOpen={onOpenAgent} />
+          <FlowList label="Passa para" empty="Ninguém: cite um agente no prompt com @ para passar a conversa" items={flow.passesTo} onOpen={onOpenAgent} />
+        </div>
+      )}
 
       <div className="flex gap-1 border-b border-zinc-300 px-6 dark:border-zinc-700">
         {tabs.map(t => (
@@ -253,6 +263,21 @@ function Revisions({ agentId, onRestored }: { agentId: string; onRestored: () =>
             </pre>
           )}
         </div>
+      ))}
+    </div>
+  );
+}
+
+function FlowList({ label, items, empty, onOpen }: { label: string; items: FlowLink[]; empty: string; onOpen?: (id: string) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="font-medium text-zinc-800 dark:text-zinc-100">{label}</span>
+      {items.length === 0 && <span className="text-zinc-600 dark:text-zinc-400">{empty}</span>}
+      {items.map(i => (
+        <button key={i.id} type="button" onClick={() => onOpen?.(i.id)} title="Abrir este agente"
+          className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium text-violet-900 hover:ring-2 hover:ring-violet-300 dark:bg-violet-900/60 dark:text-violet-100">
+          {i.name}{!i.sameGroup && i.group ? ` (em ${i.group})` : !i.sameGroup ? ' (sem matéria)' : ''}
+        </button>
       ))}
     </div>
   );
