@@ -172,3 +172,72 @@ export function PublishDialog({ onClose, onConfirm }: { onClose: () => void; onC
     </Dialog>
   );
 }
+
+export const dangerBtn =
+  'inline-flex items-center justify-center gap-1.5 rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 disabled:opacity-50 dark:border-red-800 dark:bg-zinc-900 dark:text-red-300 dark:hover:bg-red-950';
+
+export function ConfirmDialog({ title, description, confirmLabel, onClose, onConfirm, children }: {
+  title: string; description: string; confirmLabel: string; onClose: () => void; onConfirm: () => Promise<void>; children?: React.ReactNode;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Dialog title={title} description={description} onClose={onClose}>
+      {children}
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" onClick={onClose} className={secondaryBtn}>Cancelar</button>
+        <button type="button" disabled={busy} onClick={async () => { setBusy(true); try { await onConfirm(); } finally { setBusy(false); } }}
+          className="inline-flex items-center justify-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+          {busy && <Loader2 className="h-4 w-4 animate-spin" />} {confirmLabel}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Editar matéria: nome, descrição, agente inicial e exclusão. */
+export function EditGroupDialog({ group, onClose, onSaved }: { group: AgentGroup; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(group.name);
+  const [description, setDescription] = useState(group.description ?? '');
+  const [initialId, setInitialId] = useState(group.initialAgentId);
+  const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const save = async () => {
+    if (!name.trim()) return toast.error('Informe o nome da matéria.');
+    setBusy(true);
+    try {
+      await agentGroupsService.save({ name: name.trim(), description: description.trim() || null, initialAgentId: initialId, memberIds: group.members.map(m => m.agentId) }, group.id);
+      toast.success('Matéria salva.'); onSaved();
+    } catch (err: any) { toast.error(err?.response?.data?.message ?? 'Não foi possível salvar a matéria.'); }
+    finally { setBusy(false); }
+  };
+
+  if (confirmDelete) return (
+    <ConfirmDialog title={`Excluir a matéria "${group.name}"?`} confirmLabel="Excluir matéria" onClose={() => setConfirmDelete(false)}
+      description="Os agentes não são apagados: passam para “Sem matéria”. Números ligados a esta matéria deixam de ter agente inicial."
+      onConfirm={async () => {
+        try { await agentGroupsService.remove(group.id); toast.success('Matéria excluída.'); onSaved(); }
+        catch (err: any) { toast.error(err?.response?.data?.message ?? 'Não foi possível excluir a matéria.'); }
+      }} />
+  );
+
+  return (
+    <Dialog title="Editar matéria" onClose={onClose}>
+      <form onSubmit={e => { e.preventDefault(); void save(); }} className="space-y-4">
+        <label className="block"><Label>Nome da matéria</Label><input value={name} onChange={e => setName(e.target.value)} className={inputCls} /></label>
+        <label className="block"><Label hint="opcional">Descrição</Label><input value={description} onChange={e => setDescription(e.target.value)} className={inputCls} /></label>
+        <label className="block"><Label>Agente inicial</Label>
+          <select value={initialId} onChange={e => setInitialId(e.target.value)} className={inputCls}>
+            {group.members.map(m => <option key={m.agentId} value={m.agentId}>{m.agent.name}</option>)}
+          </select></label>
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <button type="button" onClick={() => setConfirmDelete(true)} className={dangerBtn}>Excluir matéria</button>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className={secondaryBtn}>Cancelar</button>
+            <button type="submit" disabled={busy} className={primaryBtn}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Salvar</button>
+          </div>
+        </div>
+      </form>
+    </Dialog>
+  );
+}

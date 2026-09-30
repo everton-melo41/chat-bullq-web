@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, FlaskConical, FolderPlus, Loader2, Plus, Search, Star } from 'lucide-react';
+import { ChevronDown, ChevronRight, FlaskConical, FolderPlus, Loader2, Pencil, Plus, Search, Star } from 'lucide-react';
 import { useOrgId } from '@/hooks/use-org-query-key';
 import { aiAgentsService, AiAgent } from '../services/ai-agents.service';
 import { agentGroupsService } from '../services/agent-groups.service';
 import { AgentEditor } from './agent-editor';
 import { TestChat } from './test-chat';
 import { agentLinks, stepsInGroup, studioService } from './studio.service';
-import { NewAgentDialog, NewGroupDialog, primaryBtn, secondaryBtn } from './dialogs';
+import { EditGroupDialog, NewAgentDialog, NewGroupDialog, primaryBtn, secondaryBtn } from './dialogs';
 
 /**
  * Estúdio de agentes (estilo LíderHub): matérias/teses à esquerda com seus
@@ -22,7 +22,7 @@ export function StudioPage() {
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showChat, setShowChat] = useState(true);
-  const [dialog, setDialog] = useState<{ kind: 'group' } | { kind: 'agent'; groupId?: string } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: 'group' } | { kind: 'agent'; groupId?: string } | { kind: 'editGroup'; groupId: string } | null>(null);
 
   const agentsQ = useQuery({ queryKey: ['ai-agents', orgId], queryFn: () => aiAgentsService.list() });
   const groupsQ = useQuery({ queryKey: ['ai-agent-groups', orgId], queryFn: () => agentGroupsService.list() });
@@ -112,6 +112,8 @@ export function StudioPage() {
                     <span className="truncate">{g.name}</span>
                     <span className="ml-1 text-xs font-normal text-zinc-600 dark:text-zinc-400">{g.members.length}</span>
                   </button>
+                  <button type="button" onClick={() => setDialog({ kind: 'editGroup', groupId: g.id })} title={`Editar ${g.name}`} aria-label={`Editar matéria ${g.name}`}
+                    className="rounded p-1 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"><Pencil className="h-3.5 w-3.5" /></button>
                   <button type="button" onClick={() => setDialog({ kind: 'agent', groupId: g.id })} title={`Novo agente em ${g.name}`}
                     className="inline-flex items-center gap-0.5 rounded px-1.5 py-1 text-xs font-medium text-primary hover:bg-primary/10">
                     <Plus className="h-3.5 w-3.5" /> Agente
@@ -156,7 +158,7 @@ export function StudioPage() {
         {selectedId && agentQ.isLoading && <Loader2 className="mx-auto mt-10 h-5 w-5 animate-spin text-zinc-500" />}
         {selectedId && agentQ.data && (
           <AgentEditor key={agentQ.data.id + (agentQ.data.draftRevisionId ?? '') + (agentQ.data.publishedRevisionId ?? '')}
-            agent={agentQ.data} groups={groups} options={optionsQ.data ?? []} flow={flowFor(agentQ.data.id)} onOpenAgent={setSelectedId} onChanged={() => { refreshAll(); void agentQ.refetch(); }} />
+            agent={agentQ.data} groups={groups} options={optionsQ.data ?? []} flow={flowFor(agentQ.data.id)} onOpenAgent={setSelectedId} onDeleted={() => { setSelectedId(null); refreshAll(); }} onChanged={() => { refreshAll(); void agentQ.refetch(); }} />
         )}
       </main>
 
@@ -173,6 +175,9 @@ export function StudioPage() {
       ))}
 
       {dialog?.kind === 'group' && <NewGroupDialog agents={allAgents} groups={groups} onClose={() => setDialog(null)} onCreated={created} />}
+      {dialog?.kind === 'editGroup' && groups.find(g => g.id === dialog.groupId) && (
+        <EditGroupDialog group={groups.find(g => g.id === dialog.groupId)!} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); refreshAll(); }} />
+      )}
       {dialog?.kind === 'agent' && <NewAgentDialog groups={groups} defaultGroupId={dialog.groupId} onClose={() => setDialog(null)} onCreated={created} />}
     </div>
   );

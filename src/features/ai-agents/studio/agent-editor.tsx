@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { aiAgentsService, AiAgent, CURATED_MODELS } from '../services/ai-agents.service';
 import { AgentGroup, agentGroupsService } from '../services/agent-groups.service';
 import { MentionEditor } from './mention-editor';
-import { PublishDialog, primaryBtn, secondaryBtn, inputCls } from './dialogs';
+import { ConfirmDialog, PublishDialog, dangerBtn, primaryBtn, secondaryBtn, inputCls } from './dialogs';
 import { MentionOption, MentionRef, toDisplay, toRaw, listMentions } from './studio.service';
 
 type Tab = 'prompt' | 'knowledge' | 'settings';
@@ -40,10 +40,11 @@ function formFrom(agent: AiAgent): { form: Form; refs: Map<string, MentionRef> }
 
 export interface FlowLink { id: string; name: string; group: string | null; sameGroup: boolean }
 
-export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAgent }: {
+export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAgent, onDeleted }: {
   agent: AiAgent; groups: AgentGroup[]; options: MentionOption[]; onChanged: () => void;
-  flow?: { passesTo: FlowLink[]; receivesFrom: FlowLink[] }; onOpenAgent?: (id: string) => void;
+  flow?: { passesTo: FlowLink[]; receivesFrom: FlowLink[] }; onOpenAgent?: (id: string) => void; onDeleted?: () => void;
 }) {
+  const [deleting, setDeleting] = useState(false);
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('prompt');
   const initial = useMemo(() => formFrom(agent), [agent]);
@@ -141,6 +142,7 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
             {(hasDraft || dirty) && <span className="rounded bg-sky-100 px-2 py-0.5 font-medium text-sky-900 dark:bg-sky-900/50 dark:text-sky-100">{dirty ? 'Alterações não salvas' : 'Rascunho salvo'}</span>}
           </div>
         </div>
+        <button type="button" onClick={() => setDeleting(true)} disabled={!!saving} className={dangerBtn}>Excluir</button>
         <button type="button" onClick={saveDraft} disabled={!!saving} className={secondaryBtn}>
           {saving === 'draft' ? <Loader2 className="inline h-4 w-4 animate-spin" /> : 'Salvar rascunho'}
         </button>
@@ -166,6 +168,20 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
+        {deleting && (
+          <ConfirmDialog title={`Excluir o agente "${agent.name}"?`} confirmLabel="Excluir agente" onClose={() => setDeleting(false)}
+            description="O agente para de atender e sai da matéria. As conversas que estavam com ele voltam para o agente inicial do número."
+            onConfirm={async () => {
+              try { await aiAgentsService.remove(agent.id); toast.success('Agente excluído.'); setDeleting(false); onDeleted?.(); }
+              catch (err: any) { toast.error(err?.response?.data?.message ?? 'Não foi possível excluir o agente.'); }
+            }}>
+            {!!flow?.receivesFrom.length && (
+              <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                Estes agentes citam {agent.name} no prompt e a menção vai ficar em vermelho: <strong>{flow.receivesFrom.map(r => r.name).join(', ')}</strong>. Ajuste esses prompts depois.
+              </p>
+            )}
+          </ConfirmDialog>
+        )}
         {publishing && <PublishDialog onClose={() => setPublishing(false)} onConfirm={note => publish(note || undefined)} />}
         {tab === 'prompt' && (
           <MentionEditor value={form.systemPrompt} onChange={v => set('systemPrompt', v)} refs={refs} options={options} />

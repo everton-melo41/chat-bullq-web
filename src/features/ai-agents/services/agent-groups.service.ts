@@ -10,4 +10,5 @@ export const agentGroupsService = {
     const { data } = id ? await api.put(`/ai-agent-groups/${id}`, input) : await api.post('/ai-agent-groups', input);
     return data.data ?? data;
   },
+  async remove(id: string): Promise<void> { await api.delete(`/ai-agent-groups/${id}`); },
 };
