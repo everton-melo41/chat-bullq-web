@@ -7,29 +7,25 @@ import {
   ChevronDown,
   ChevronRight,
   BarChart3,
-  Sparkles,
-  Wrench,
+
   Activity,
-  User,
-  ShieldCheck,
+
 } from 'lucide-react';
 
 const STORAGE_KEY = 'jarvis-tree-expanded';
 
-type Tab = 'overview' | 'agents' | 'skills' | 'tools' | 'runs' | 'agent' | 'watchdog';
+type Tab = 'studio' | 'overview' | 'runs';
 
 const TABS: Array<{
   id: Tab;
   label: string;
   icon: React.ElementType;
 }> = [
+  // Estúdio (padrão) + acompanhamento. As abas técnicas antigas (skills,
+  // tools, watchdog...) continuam em /ai-agents?tab=..., fora do menu.
+  { id: 'studio', label: 'Estúdio de agentes', icon: Bot },
   { id: 'overview', label: 'Visão geral', icon: BarChart3 },
-  { id: 'agents', label: 'Agentes', icon: Bot },
-  { id: 'skills', label: 'Skills', icon: Sparkles },
-  { id: 'tools', label: 'Tools', icon: Wrench },
   { id: 'runs', label: 'Execuções', icon: Activity },
-  { id: 'watchdog', label: 'Watchdog', icon: ShieldCheck },
-  { id: 'agent', label: 'Por agente', icon: User },
 ];
 
 /**
@@ -48,7 +44,7 @@ export function JarvisTree() {
   });
 
   const isAiAgents = pathname?.startsWith('/ai-agents');
-  const activeTab = (searchParams.get('tab') as Tab) ?? 'overview';
+  const activeTab = (searchParams.get('tab') as Tab) ?? 'studio';
 
   const toggleExpanded = () => {
     const next = !expanded;
@@ -61,7 +57,7 @@ export function JarvisTree() {
   // Sempre passamos `?tab=` explícito (inclusive pra overview) — sem isso,
   // navegar de `/ai-agents?tab=runs` pra `/ai-agents` (mesma rota base, só
   // limpando o param) não dispara re-render confiável no Next.js App Router.
-  const goRoot = () => router.push('/ai-agents?tab=overview');
+  const goRoot = () => router.push('/ai-agents?tab=studio');
   const goTab = (tab: Tab) => router.push(`/ai-agents?tab=${tab}`);
 
   return (
@@ -89,7 +85,7 @@ export function JarvisTree() {
           }`}
         >
           <Bot className="size-5" />
-          <span className="flex-1">Jarvis</span>
+          <span className="flex-1">Agentes de IA</span>
         </button>
       </div>
 

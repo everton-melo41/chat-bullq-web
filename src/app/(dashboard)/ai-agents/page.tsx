@@ -31,7 +31,7 @@ const VALID_TABS: Tab[] = ['groups', 'overview', 'agents', 'skills', 'tools', 'r
 export default function AiAgentsPage() {
   const searchParams = useSearchParams();
   const rawTab = searchParams.get('tab');
-  if (!rawTab) return <div className="h-full min-h-0"><StudioPage /></div>;
+  if (!rawTab || rawTab === 'studio') return <div className="h-full min-h-0"><StudioPage /></div>;
   const raw = rawTab as Tab;
   const tab: Tab = VALID_TABS.includes(raw) ? raw : 'overview';
   const meta = TAB_META[tab];
@@ -42,14 +42,14 @@ export default function AiAgentsPage() {
       <div className="border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-950">
         <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-zinc-100">
           <Bot className="h-5 w-5 text-primary" />
-          Jarvis
+          Agentes de IA
           <span className="text-zinc-300 dark:text-zinc-600">/</span>
           <Icon className="h-4 w-4 text-zinc-400" />
           <span className="text-zinc-700 dark:text-zinc-300">{meta.label}</span>
         </h1>
       </div>
 
-      <nav className="flex gap-4 border-b px-6 py-3 text-sm"><Link href="/ai-agents?tab=agents">Agentes</Link><Link href="/ai-agents?tab=groups">Grupos de agentes</Link></nav>
+      <nav className="border-b px-6 py-2 text-sm"><Link href="/ai-agents?tab=studio" className="text-primary hover:underline">← Voltar ao Estúdio de agentes</Link></nav>
       <div className="flex-1 overflow-y-auto">
         {tab === 'groups' && <AgentGroups />}
         {tab === 'overview' && <JarvisOverviewTab />}
