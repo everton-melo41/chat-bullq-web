@@ -1,6 +1,7 @@
 'use client';
 
 import { AgentGroups } from '@/features/ai-agents/components/agent-groups';
+import { StudioPage } from '@/features/ai-agents/studio/studio-page';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Bot, BarChart3, User, Sparkles, Wrench, Activity, ShieldCheck } from 'lucide-react';
@@ -29,7 +30,9 @@ const VALID_TABS: Tab[] = ['groups', 'overview', 'agents', 'skills', 'tools', 'r
 
 export default function AiAgentsPage() {
   const searchParams = useSearchParams();
-  const raw = (searchParams.get('tab') ?? 'overview') as Tab;
+  const rawTab = searchParams.get('tab');
+  if (!rawTab) return <div className="h-full min-h-0"><StudioPage /></div>;
+  const raw = rawTab as Tab;
   const tab: Tab = VALID_TABS.includes(raw) ? raw : 'overview';
   const meta = TAB_META[tab];
   const Icon = meta.icon;
