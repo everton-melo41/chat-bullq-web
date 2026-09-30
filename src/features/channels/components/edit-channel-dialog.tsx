@@ -1,5 +1,7 @@
 'use client';
 
+import { agentGroupsService } from '@/features/ai-agents/services/agent-groups.service';
+import { useOrgId } from '@/hooks/use-org-query-key';
 import { useQuery } from '@tanstack/react-query';
 import { departmentsService } from '@/features/departments/services/departments.service';
 import { useEffect, useState } from 'react';
@@ -28,6 +30,9 @@ export function EditChannelDialog({
   onClose,
   onSaved,
 }: EditChannelDialogProps) {
+  const org = useOrgId();
+  const groups = useQuery({ queryKey: ['ai-agent-groups', org], queryFn: agentGroupsService.list, enabled: !!channel });
+  const [aiAgentGroupId, setAiAgentGroupId] = useState('');
   const [name, setName] = useState('');
   const [defaultDepartmentId, setDefaultDepartmentId] = useState('');
   const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: departmentsService.list, enabled: !!channel });
@@ -38,6 +43,7 @@ export function EditChannelDialog({
   useEffect(() => {
     if (!channel) return;
     setName(channel.name);
+    setAiAgentGroupId(channel.aiAgentGroupId ?? "");
     setDefaultDepartmentId(channel.defaultDepartmentId ?? "");
     // Coerce nested values to string for the form. Booleans/numbers are
     // re-typed on save when needed (none of the WhatsApp configs use them).
@@ -74,6 +80,7 @@ export function EditChannelDialog({
       }
       await channelsService.update(channel.id, {
         name: name.trim(),
+        aiAgentGroupId: aiAgentGroupId || null,
         defaultDepartmentId: defaultDepartmentId || null,
         config: merged,
         webhookSecret: webhookSecret.trim() || undefined,
@@ -120,6 +127,13 @@ export function EditChannelDialog({
             />
           </div>
 
+          <label className={labelCls}>Grupo de agentes
+            <select className={inputCls} disabled={groups.isLoading || groups.isError} value={aiAgentGroupId} onChange={e => setAiAgentGroupId(e.target.value)}>
+              <option value="">Sem grupo (roteamento atual)</option>
+              {groups.data?.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+            </select>
+            {groups.isError && <span role="alert">Erro ao carregar grupos</span>}
+          </label>
           <label className={labelCls}>Departamento padrão
             <select className={inputCls} value={defaultDepartmentId} onChange={e => setDefaultDepartmentId(e.target.value)}>
               <option value="">Sem departamento padrão</option>

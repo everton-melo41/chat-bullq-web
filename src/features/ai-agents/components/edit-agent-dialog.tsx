@@ -1,5 +1,6 @@
 'use client';
 
+import { agentGroupsService } from '../services/agent-groups.service';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash2, X, Plus, ShieldCheck } from 'lucide-react';
@@ -30,6 +31,8 @@ export function EditAgentDialog({
 }: EditAgentDialogProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
+  const groups = useQuery({ queryKey: ['ai-agent-groups', orgId], queryFn: agentGroupsService.list, enabled: !!initialAgent });
+  const [entryQuestion, setEntryQuestion] = useState('');
   const { data: loadedAgent, refetch } = useQuery({
     queryKey: ['ai-agent-editor', orgId, initialAgent?.id],
     queryFn: () => aiAgentsService.findOne(initialAgent!.id), enabled: !!initialAgent,
@@ -108,6 +111,7 @@ export function EditAgentDialog({
     setDescription(editable.description ?? '');
     setModelId(editable.modelId);
     setSystemPrompt(editable.systemPrompt);
+    setEntryQuestion(editable.entryQuestion ?? "");
     setTemperature(editable.temperature);
     setParentAgentId(editable.parentAgentId ?? '');
     setDepartment(editable.department ?? '');
@@ -129,6 +133,7 @@ export function EditAgentDialog({
         description,
         modelId,
         systemPrompt,
+        entryQuestion: entryQuestion.trim() || null,
         temperature,
         parentAgentId: parentAgentId || null,
         department: department || null,
@@ -286,6 +291,19 @@ export function EditAgentDialog({
               rows={10}
               className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
             />
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm">Pergunta de entrada
+              <textarea maxLength={2000} value={entryQuestion} onChange={e => { setEntryQuestion(e.target.value); setDirty(true); }} className="mt-1 w-full rounded-md border bg-transparent p-2" rows={3} />
+            </label>
+            <p className="text-xs text-zinc-500">Publicada junto com o agente. Ao receber um handoff, o agente anterior envia esta pergunta e aguarda a resposta. Deixe em branco para iniciar imediatamente.</p>
+            <h3 className="text-sm font-medium">Pode passar para</h3>
+            {groups.isLoading && <p>Carregando grupos…</p>}
+            {groups.isError && <p role="alert">Erro ao carregar grupos.</p>}
+            {groups.data?.filter(group => group.members.some(m => m.agentId === agent.id)).map(group => <div key={group.id} className="text-xs"><strong>{group.name}</strong>: {group.members.filter(m => m.agentId !== agent.id).map(m => `${m.agent.name}${!m.agent.isActive || !m.agent.publishedRevisionId || m.agent.deletedAt ? ' (indisponível)' : ''}`).join(', ') || 'Nenhum outro membro'}</div>)}
+            {groups.data && !groups.data.some(group => group.members.some(m => m.agentId === agent.id)) && <p className="text-xs text-zinc-500">Este agente não pertence a um grupo.</p>}
+            <p className="text-xs text-zinc-500">Os destinos dependem do grupo vinculado ao canal da conversa e da ação handoffToAgent habilitada.</p>
           </div>
 
           <div className="rounded-lg border-2 border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/40 dark:bg-amber-900/10">

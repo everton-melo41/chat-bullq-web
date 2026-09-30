@@ -60,6 +60,7 @@ export interface AgentRevisionDiff {
   fields: { field: string; before: unknown; after: unknown }[];
 }
 export interface AiAgent {
+  entryQuestion?: string | null;
   skills?: { skillId: string; requiresApproval: boolean }[];
   enabledBuiltinTools: string[] | null;
   publishedRevisionId?: string | null;
@@ -94,6 +95,7 @@ export interface AiAgent {
 }
 
 export interface CreateAgentInput {
+  entryQuestion?: string | null;
   skills?: { skillId: string; requiresApproval: boolean }[];
   enabledBuiltinTools?: string[] | null;
   name: string;

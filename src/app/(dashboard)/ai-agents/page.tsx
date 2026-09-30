@@ -1,5 +1,7 @@
 'use client';
 
+import { AgentGroups } from '@/features/ai-agents/components/agent-groups';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Bot, BarChart3, User, Sparkles, Wrench, Activity, ShieldCheck } from 'lucide-react';
 import { AgentsList } from '@/features/ai-agents/components/agents-list';
@@ -10,9 +12,10 @@ import { JarvisToolsTab } from '@/features/ai-agents/components/jarvis/tools-tab
 import { JarvisRunsTab } from '@/features/ai-agents/components/jarvis/runs-tab';
 import { JarvisWatchdogTab } from '@/features/ai-agents/components/jarvis/watchdog-tab';
 
-type Tab = 'overview' | 'agents' | 'skills' | 'tools' | 'agent' | 'runs' | 'watchdog';
+type Tab = 'groups' | 'overview' | 'agents' | 'skills' | 'tools' | 'agent' | 'runs' | 'watchdog';
 
 const TAB_META: Record<Tab, { label: string; icon: React.ElementType }> = {
+  groups: { label: 'Grupos de agentes', icon: Bot },
   overview: { label: 'Visão geral', icon: BarChart3 },
   agents: { label: 'Agentes', icon: Bot },
   skills: { label: 'Skills', icon: Sparkles },
@@ -22,7 +25,7 @@ const TAB_META: Record<Tab, { label: string; icon: React.ElementType }> = {
   agent: { label: 'Por agente', icon: User },
 };
 
-const VALID_TABS: Tab[] = ['overview', 'agents', 'skills', 'tools', 'runs', 'watchdog', 'agent'];
+const VALID_TABS: Tab[] = ['groups', 'overview', 'agents', 'skills', 'tools', 'runs', 'watchdog', 'agent'];
 
 export default function AiAgentsPage() {
   const searchParams = useSearchParams();
@@ -43,7 +46,9 @@ export default function AiAgentsPage() {
         </h1>
       </div>
 
+      <nav className="flex gap-4 border-b px-6 py-3 text-sm"><Link href="/ai-agents?tab=agents">Agentes</Link><Link href="/ai-agents?tab=groups">Grupos de agentes</Link></nav>
       <div className="flex-1 overflow-y-auto">
+        {tab === 'groups' && <AgentGroups />}
         {tab === 'overview' && <JarvisOverviewTab />}
         {tab === 'agents' && <AgentsList />}
         {tab === 'skills' && <JarvisSkillsTab />}
