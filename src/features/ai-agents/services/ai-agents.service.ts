@@ -150,6 +150,11 @@ export const aiAgentsService = {
     await api.delete(`/ai-agents/${id}`);
   },
 
+  async listBuiltInActions(agentId: string): Promise<Array<{ name: string; description: string }>> {
+    const { data } = await api.get('/ai-agents/' + agentId + '/built-in-actions');
+    return data.data ?? data;
+  },
+
   async assignChannel(
     id: string,
     payload: { channelId: string; mode?: AgentMode; trigger?: AgentTrigger },

@@ -39,7 +39,17 @@ export interface LastMessage {
   createdAt: string;
 }
 
-export interface InternalNote { id: string; conversationId: string; authorId: string; content: string; createdAt: string; author: { id: string; name: string } | null; }
+export interface InternalNote {
+  id: string;
+  conversationId: string;
+  authorId: string | null;
+  generatedByAi?: boolean;
+  agentId?: string | null;
+  agentRunId?: string | null;
+  content: string;
+  createdAt: string;
+  author: { id: string; name: string } | null;
+}
 
 export interface Conversation {
   departmentId?: string | null;

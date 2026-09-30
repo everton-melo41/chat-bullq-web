@@ -469,6 +469,12 @@ function AgentSkillsAndTools({ agentId }: { agentId: string }) {
     enabled: !!agentId,
   });
 
+  const { data: builtInActions, isError: builtInsError } = useQuery({
+    queryKey: ['ai-agent-built-ins', agentId],
+    queryFn: () => aiAgentsService.listBuiltInActions(agentId),
+    enabled: !!agentId,
+  });
+
   const approvalByskillId = new Map(
     (bindings ?? []).map((b) => [b.skillId, b.requiresApproval]),
   );
@@ -521,6 +527,17 @@ function AgentSkillsAndTools({ agentId }: { agentId: string }) {
 
   return (
     <div className="space-y-3">
+      <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800" aria-label="Ações built-in disponíveis">
+        <h4 className="text-sm font-medium">Ações built-in disponíveis</h4>
+        <p className="mt-1 text-xs text-zinc-500">Disponíveis automaticamente para este agente. Cite o nome no prompt para orientar seu uso. Lista somente leitura.</p>
+        {builtInsError && <p className="mt-2 text-xs text-red-500">Não foi possível carregar as ações.</p>}
+        <dl className="mt-3 space-y-3">
+          {(builtInActions ?? []).map(action => <div key={action.name}>
+            <dt className="font-mono text-xs font-semibold">{action.name}</dt>
+            <dd className="mt-1 text-xs text-zinc-500">{action.description}</dd>
+          </div>)}
+        </dl>
+      </section>
       <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
