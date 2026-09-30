@@ -25,8 +25,9 @@ export function TestChat({ agentId, agentName }: { agentId: string; agentName: s
   const endRef = useRef<HTMLDivElement>(null);
 
   const reset = () => { setCurrent({ id: agentId, name: agentName }); setHistory([]); setEntries([]); };
-  useEffect(reset, [agentId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), [entries, busy]);
+  useEffect(() => { reset(); }, [agentId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Chaves obrigatórias: scrollIntoView devolve Promise em navegadores novos, e o efeito não pode devolver nada.
+  useEffect(() => { void endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [entries, busy]);
 
   const ask = async (target: { id: string; name: string }, turns: TestChatTurn[], hops = 0): Promise<void> => {
     const result = await studioService.testChat(target.id, turns, useDraft);
