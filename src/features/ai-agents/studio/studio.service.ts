@@ -1,6 +1,6 @@
 import { api } from '@/lib/api';
 
-export type MentionType = 'agent' | 'tag' | 'department' | 'stage' | 'action';
+export type MentionType = 'agent' | 'tag' | 'department' | 'stage' | 'action' | 'media';
 export interface MentionOption { type: MentionType; id: string; label: string; hint: string }
 
 export interface TestChatTurn { role: 'user' | 'assistant'; content: string }
@@ -28,7 +28,7 @@ export const studioService = {
 
 /* ── Menções: o prompt guarda @[Rótulo](tipo:id); o editor mostra @[Rótulo]. ── */
 
-const RAW_RE = /@\[([^\]\n]{1,80})\]\((agent|tag|department|stage|action):([A-Za-z0-9_-]{1,64})\)/g;
+const RAW_RE = /@\[([^\]\n]{1,80})\]\((agent|tag|department|stage|action|media):([A-Za-z0-9_-]{1,64})\)/g;
 const DISPLAY_RE = /@\[([^\]\n]{1,80})\](?!\()/g;
 
 export interface MentionRef { type: MentionType; id: string }
@@ -72,6 +72,7 @@ export const MENTION_STYLE: Record<MentionType, { chip: string; name: string }> 
   department: { chip: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200', name: 'departamento' },
   stage: { chip: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200', name: 'etapa' },
   action: { chip: 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100', name: 'ação' },
+  media: { chip: 'bg-rose-100 text-rose-900 dark:bg-rose-900/50 dark:text-rose-100', name: 'mídia' },
 };
 
 /* ── Fluxo entre agentes, derivado das menções @agente nos prompts publicados ── */

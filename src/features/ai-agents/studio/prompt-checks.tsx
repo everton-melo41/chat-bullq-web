@@ -6,6 +6,7 @@ import { listMentions, MENTION_STYLE, MentionOption, MentionRef, MentionType } f
 
 const GLOSSARY: { type: MentionType; title: string; explain: string }[] = [
   { type: 'agent', title: 'Agentes', explain: 'Passa a conversa para outro agente (de qualquer matéria). Ex.: “se relatar doença, passe para @Análise de saúde”.' },
+  { type: 'media', title: 'Mídias', explain: 'Envia um vídeo, imagem, áudio ou documento da biblioteca. Ex.: “se o lead pedir a lista, envie @Lista de documentos BPC”.' },
   { type: 'action', title: 'Ações', explain: 'Resumo em nota interna, salvar dados do lead no cadastro, desativar a IA, transferir para humano.' },
   { type: 'tag', title: 'Etiquetas', explain: 'Marca a conversa. Ex.: “quando faltar documento, aplique @Aguardando documentos”.' },
   { type: 'stage', title: 'Etapas do funil', explain: 'Move a conversa no funil. Ex.: “lead qualificado: mova para @Qualificado”.' },
