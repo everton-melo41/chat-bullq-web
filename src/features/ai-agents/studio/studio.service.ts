@@ -8,7 +8,7 @@ export interface TestChatResult {
   agent: { id: string; name: string };
   source: 'rascunho' | 'publicado';
   reply: string;
-  actions: { tool: string; description: string; args: Record<string, unknown>; simulated: boolean }[];
+  actions: { tool: string; description: string; args: Record<string, unknown>; simulated: boolean; result?: { message: string; excerpts: { title: string; section: string; content: string; score: number }[] } }[];
   handoffTo: { id: string; name: string } | null;
   invalidMentions: string[];
   ms: number;

@@ -81,7 +81,8 @@ export function TestChat({ agentId, agentName, revisionKey }: { agentId: string;
               {r.reply && <div className="rounded-2xl rounded-bl-sm bg-zinc-100 px-3 py-2 text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100">{r.reply}</div>}
               {r.actions.map((a, j) => (
                 <div key={j} className="rounded-lg border border-dashed border-amber-300 bg-amber-50 px-3 py-2 text-xs dark:border-amber-700 dark:bg-amber-950/40">
-                  <div className="flex items-center gap-1 font-medium text-amber-800 dark:text-amber-200"><Zap className="h-3 w-3" /> {a.tool} <span className="font-normal text-amber-600">· simulado</span></div>
+                  <div className="flex items-center gap-1 font-medium text-amber-800 dark:text-amber-200"><Zap className="h-3 w-3" /> {a.tool} <span className="font-normal text-amber-600">· {a.simulated ? 'simulado' : 'consulta realizada'}</span></div>
+                  {a.result && <div className="mt-2 whitespace-pre-wrap break-words"><p>{a.result.message}</p>{a.result.excerpts.map((x, k) => <div key={k} className="mt-2"><strong>{x.title} · {x.section} · {x.score.toFixed(3)}</strong><p>{x.content}</p></div>)}</div>}
                   {Object.keys(a.args ?? {}).length > 0 && <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-amber-900 dark:text-amber-100">{Object.entries(a.args).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n')}</pre>}
                 </div>
               ))}

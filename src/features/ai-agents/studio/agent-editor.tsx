@@ -6,6 +6,7 @@ import { BookOpen, History, Loader2, Settings2, SquarePen, Upload } from 'lucide
 import { toast } from 'sonner';
 import { aiAgentsService, AiAgent, CURATED_MODELS } from '../services/ai-agents.service';
 import { AgentGroup, agentGroupsService } from '../services/agent-groups.service';
+import { AgentKnowledge } from './knowledge-library';
 import { MentionEditor } from './mention-editor';
 import { PromptChecks } from './prompt-checks';
 import { ConfirmDialog, PublishDialog, dangerBtn, primaryBtn, secondaryBtn, inputCls } from './dialogs';
@@ -188,13 +189,7 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
           </div>
         )}
 
-        {tab === 'knowledge' && (
-          <div className="mx-auto mt-10 max-w-md rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-            <BookOpen className="mx-auto h-8 w-8 text-zinc-600 dark:text-zinc-400" />
-            <p className="mt-3 font-medium text-zinc-800 dark:text-zinc-100">Em breve</p>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Aqui você vai enviar PDFs e textos (listas de doenças, FAQ, quebra de objeções) para o agente consultar.</p>
-          </div>
-        )}
+        {tab === 'knowledge' && <AgentKnowledge key={agent.id} agentId={agent.id} />}
 
         {tab === 'settings' && (
           <div className="max-w-xl space-y-6">

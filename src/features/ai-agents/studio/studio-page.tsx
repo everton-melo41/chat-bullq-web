@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, FlaskConical, FolderPlus, Images, Loader2, Pencil, Plus, Search, Star } from 'lucide-react';
+import { KnowledgeLibraryDialog } from './knowledge-library';
 import { MediaLibraryDialog } from './media-library';
 import { useOrgId } from '@/hooks/use-org-query-key';
 import { aiAgentsService, AiAgent } from '../services/ai-agents.service';
@@ -29,7 +30,7 @@ export function StudioPage() {
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showChat, setShowChat] = useState(true);
-  const [dialog, setDialog] = useState<{ kind: 'group' } | { kind: 'agent'; groupId?: string } | { kind: 'editGroup'; groupId: string } | { kind: 'media' } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: 'group' } | { kind: 'agent'; groupId?: string } | { kind: 'editGroup'; groupId: string } | { kind: 'media' } | { kind: 'knowledge' } | null>(null);
 
   const agentsQ = useQuery({ queryKey: ['ai-agents', orgId], queryFn: () => aiAgentsService.list() });
   const groupsQ = useQuery({ queryKey: ['ai-agent-groups', orgId], queryFn: () => agentGroupsService.list() });
@@ -151,6 +152,7 @@ export function StudioPage() {
           )}
         </nav>
 
+        <button type="button" onClick={() => setDialog({ kind: 'knowledge' })} className={`${secondaryBtn} mx-3 mb-2`}>Base de conhecimento</button>
         <button type="button" onClick={() => setDialog({ kind: 'media' })} className="mx-3 mb-2 inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-100 dark:hover:bg-zinc-800">
           <Images className="h-4 w-4" /> Biblioteca de mídias
         </button>
@@ -195,6 +197,7 @@ export function StudioPage() {
       {dialog?.kind === 'editGroup' && groups.find(g => g.id === dialog.groupId) && (
         <EditGroupDialog group={groups.find(g => g.id === dialog.groupId)!} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); refreshAll(); }} />
       )}
+      {dialog?.kind === 'knowledge' && <KnowledgeLibraryDialog onClose={() => setDialog(null)} />}
       {dialog?.kind === 'media' && <MediaLibraryDialog onClose={() => setDialog(null)} />}
       {dialog?.kind === 'agent' && <NewAgentDialog groups={groups} defaultGroupId={dialog.groupId} onClose={() => setDialog(null)} onCreated={created} />}
     </div>
