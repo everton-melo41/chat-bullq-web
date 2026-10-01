@@ -70,7 +70,8 @@ export function MediaLibraryDialog({ onClose }: { onClose: () => void }) {
 
       <div className="mt-4 max-h-72 space-y-1.5 overflow-y-auto">
         {mediaQ.isLoading && <Loader2 className="mx-auto h-5 w-5 animate-spin text-zinc-500" />}
-        {mediaQ.data?.length === 0 && <p className="text-sm text-zinc-700 dark:text-zinc-300">Nenhuma mídia ainda.</p>}
+        {mediaQ.isError && <p role="alert" className="text-sm text-red-700">Não foi possível carregar a biblioteca. <button className="underline" onClick={() => void mediaQ.refetch()}>Tentar de novo</button></p>}
+        {!mediaQ.isError && mediaQ.data?.length === 0 && <p className="text-sm text-zinc-700 dark:text-zinc-300">Nenhuma mídia ainda.</p>}
         {mediaQ.data?.map(m => {
           const K = KIND[m.kind] ?? KIND.DOCUMENT;
           return (

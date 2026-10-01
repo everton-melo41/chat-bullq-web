@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, History, Loader2, Settings2, SquarePen, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,7 +9,7 @@ import { AgentGroup, agentGroupsService } from '../services/agent-groups.service
 import { MentionEditor } from './mention-editor';
 import { PromptChecks } from './prompt-checks';
 import { ConfirmDialog, PublishDialog, dangerBtn, primaryBtn, secondaryBtn, inputCls } from './dialogs';
-import { MentionOption, MentionRef, toDisplay, toRaw, listMentions } from './studio.service';
+import { registerMention, MentionOption, MentionRef, toDisplay, toRaw, listMentions } from './studio.service';
 
 type Tab = 'prompt' | 'knowledge' | 'settings';
 
@@ -41,9 +41,9 @@ function formFrom(agent: AiAgent): { form: Form; refs: Map<string, MentionRef> }
 
 export interface FlowLink { id: string; name: string; group: string | null; sameGroup: boolean }
 
-export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAgent, onDeleted }: {
+export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAgent, onDeleted, onDirtyChange }: {
   agent: AiAgent; groups: AgentGroup[]; options: MentionOption[]; onChanged: () => void;
-  flow?: { passesTo: FlowLink[]; receivesFrom: FlowLink[] }; onOpenAgent?: (id: string) => void; onDeleted?: () => void;
+  flow?: { passesTo: FlowLink[]; receivesFrom: FlowLink[] }; onOpenAgent?: (id: string) => void; onDeleted?: () => void; onDirtyChange: (dirty: boolean) => void;
 }) {
   const [deleting, setDeleting] = useState(false);
   const qc = useQueryClient();
@@ -51,11 +51,14 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
   const initial = useMemo(() => formFrom(agent), [agent]);
   const [form, setForm] = useState<Form>(initial.form);
   const [refs] = useState(() => initial.refs);
+  const baseline = useRef(agent);
+  const [remoteChanged, setRemoteChanged] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState<'draft' | 'publish' | null>(null);
   const [publishing, setPublishing] = useState(false);
 
-  useEffect(() => { const f = formFrom(agent); setForm(f.form); f.refs.forEach((v, k) => refs.set(k, v)); setDirty(false); }, [agent]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (dirty) { setRemoteChanged(true); return; } baseline.current = agent; setRemoteChanged(false); const f = formFrom(agent); setForm(f.form); refs.clear(); f.refs.forEach((v, k) => refs.set(k, v)); }, [agent]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
@@ -75,7 +78,7 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
     modelId: form.modelId,
     isActive: form.isActive,
     modelParams: {
-      ...((agent.draftRevision?.snapshot?.modelParams ?? agent.modelParams ?? {}) as Record<string, unknown>),
+      ...((baseline.current.draftRevision?.snapshot?.modelParams ?? baseline.current.modelParams ?? {}) as Record<string, unknown>),
       debounceSeconds: Math.max(5, Math.min(120, Math.round(form.debounceSeconds || 18))),
       activationKeywords: form.keywords.split(',').map(k => k.trim()).filter(Boolean),
     },
@@ -110,15 +113,7 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
 
   const moveToGroup = async (groupId: string) => {
     try {
-      if (group && group.id !== groupId) {
-        const rest = group.members.map(m => m.agentId).filter(id => id !== agent.id);
-        if (group.initialAgentId === agent.id && rest.length) return toast.error(`Este é o agente inicial de "${group.name}". Escolha outro inicial nesse grupo antes de mover.`);
-        if (rest.length) await agentGroupsService.save({ name: group.name, description: group.description, initialAgentId: group.initialAgentId, memberIds: rest }, group.id);
-      }
-      const target = groups.find(g => g.id === groupId);
-      if (target && !target.members.some(m => m.agentId === agent.id)) {
-        await agentGroupsService.save({ name: target.name, description: target.description, initialAgentId: target.initialAgentId, memberIds: [...target.members.map(m => m.agentId), agent.id] }, target.id);
-      }
+      await agentGroupsService.moveAgent(agent.id, groupId || null);
       toast.success('Matéria atualizada.'); onChanged();
     } catch (err: any) { toast.error(err?.response?.data?.message ?? 'Não foi possível mudar a matéria.'); }
   };
@@ -152,6 +147,7 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
         </button>
       </div>
 
+      {remoteChanged && dirty && <p role="status" className="px-6 py-2 text-sm text-amber-800 dark:text-amber-200">O agente foi atualizado no servidor. Suas alterações locais foram preservadas; revise antes de salvar.</p>}
       {flow && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-zinc-300 bg-zinc-50 px-6 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-900/60">
           <FlowList label="Recebe de" empty={group?.initialAgentId === agent.id ? 'Ninguém: atende primeiro na matéria' : 'Ninguém cita este agente ainda'} items={flow.receivesFrom} onOpen={onOpenAgent} />
@@ -188,7 +184,7 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
           <div className="space-y-4">
             <div className="h-[55vh] min-h-[380px]"><MentionEditor value={form.systemPrompt} onChange={v => set('systemPrompt', v)} refs={refs} options={options} /></div>
             <PromptChecks text={form.systemPrompt} refs={refs} options={options} limit={10_000}
-              onInsert={o => { refs.set(o.label, { type: o.type, id: o.id }); set('systemPrompt', `${form.systemPrompt.replace(/\s*$/, '')} @[${o.label}] `); }} />
+              onInsert={o => { const label = registerMention(o.label, o, refs); set('systemPrompt', `${form.systemPrompt.replace(/\s*$/, '')} @[${label}] `); }} />
           </div>
         )}
 
@@ -204,9 +200,9 @@ export function AgentEditor({ agent, groups, options, onChanged, flow, onOpenAge
           <div className="max-w-xl space-y-6">
             <Field label="Nome"><input value={form.name} onChange={e => set('name', e.target.value)} className={input} /></Field>
             <Field label="Matéria / tese" hint="O grupo em que este agente atende.">
-              <select value={group?.id ?? ''} onChange={e => e.target.value && void moveToGroup(e.target.value)} className={input}>
-                <option value="">{group ? group.name : 'Sem matéria'}</option>
-                {groups.filter(g => g.id !== group?.id).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              <select value={group?.id ?? ''} onChange={e => void moveToGroup(e.target.value)} className={input}>
+                <option value="">Sem matéria</option>
+                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </Field>
             <Field label="Modelo">

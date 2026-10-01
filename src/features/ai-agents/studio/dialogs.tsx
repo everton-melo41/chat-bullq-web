@@ -49,6 +49,7 @@ export function NewGroupDialog({ agents, groups, onClose, onCreated }: {
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [kind, setKind] = useState<'TESE' | 'SUPORTE'>('TESE');
   const [mode, setMode] = useState<'new' | 'existing'>('new');
   const [agentName, setAgentName] = useState('');
   const [existingId, setExistingId] = useState('');
@@ -71,12 +72,8 @@ export function NewGroupDialog({ agents, groups, onClose, onCreated }: {
         const n = agentName.trim() || `Triagem ${title}`;
         const created = await aiAgentsService.create({ name: n, modelId: DEFAULT_AGENT_MODEL, systemPrompt: `Você é o agente ${n} do escritório. Descreva aqui como ele deve atender.` });
         initialId = created.id;
-      } else {
-        const current = groups.find(g => g.members.some(m => m.agentId === existingId));
-        const rest = current?.members.map(m => m.agentId).filter(id => id !== existingId) ?? [];
-        if (current && rest.length) await agentGroupsService.save({ name: current.name, description: current.description, initialAgentId: current.initialAgentId, memberIds: rest }, current.id);
       }
-      await agentGroupsService.save({ name: title, description: description.trim() || null, initialAgentId: initialId, memberIds: [initialId] });
+      await agentGroupsService.save({ kind, name: title, description: description.trim() || null, initialAgentId: initialId, memberIds: [initialId] });
       toast.success(`Matéria "${title}" criada.`);
       onCreated(initialId);
     } catch (err: any) {
@@ -87,6 +84,7 @@ export function NewGroupDialog({ agents, groups, onClose, onCreated }: {
   return (
     <Dialog title="Nova matéria" description="Agrupe os agentes de uma tese, como BPC/LOAS, Auxílio-doença ou Trabalhista." onClose={onClose}>
       <form onSubmit={e => { e.preventDefault(); void submit(); }} className="space-y-4">
+        <label className="block"><Label>Tipo</Label><select value={kind} onChange={e => setKind(e.target.value as 'TESE' | 'SUPORTE')} className={inputCls}><option value="TESE">Tese</option><option value="SUPORTE">Suporte</option></select></label>
         <label className="block"><Label>Nome da matéria</Label>
           <input ref={nameRef} value={name} onChange={e => setName(e.target.value)} placeholder="Ex.: BPC/LOAS" className={inputCls} /></label>
         <label className="block"><Label hint="opcional">Descrição</Label>
@@ -129,7 +127,7 @@ export function NewAgentDialog({ groups, defaultGroupId, onClose, onCreated }: {
     try {
       const agent = await aiAgentsService.create({ name: n, modelId: DEFAULT_AGENT_MODEL, systemPrompt: `Você é o agente ${n} do escritório. Descreva aqui como ele deve atender.` });
       const g = groups.find(x => x.id === groupId);
-      if (g) await agentGroupsService.save({ name: g.name, description: g.description, initialAgentId: g.initialAgentId, memberIds: [...g.members.map(m => m.agentId), agent.id] }, g.id);
+      if (g) await agentGroupsService.moveAgent(agent.id, g.id);
       toast.success(`Agente "${n}" criado como rascunho.`);
       onCreated(agent.id);
     } catch (err: any) {
@@ -198,6 +196,7 @@ export function ConfirmDialog({ title, description, confirmLabel, onClose, onCon
 export function EditGroupDialog({ group, onClose, onSaved }: { group: AgentGroup; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description ?? '');
+  const [kind, setKind] = useState<'TESE' | 'SUPORTE'>(group.kind ?? 'TESE');
   const [initialId, setInitialId] = useState(group.initialAgentId);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -206,7 +205,7 @@ export function EditGroupDialog({ group, onClose, onSaved }: { group: AgentGroup
     if (!name.trim()) return toast.error('Informe o nome da matéria.');
     setBusy(true);
     try {
-      await agentGroupsService.save({ name: name.trim(), description: description.trim() || null, initialAgentId: initialId, memberIds: group.members.map(m => m.agentId) }, group.id);
+      await agentGroupsService.save({ kind, name: name.trim(), description: description.trim() || null, initialAgentId: initialId, memberIds: group.members.map(m => m.agentId) }, group.id);
       toast.success('Matéria salva.'); onSaved();
     } catch (err: any) { toast.error(err?.response?.data?.message ?? 'Não foi possível salvar a matéria.'); }
     finally { setBusy(false); }
@@ -224,6 +223,7 @@ export function EditGroupDialog({ group, onClose, onSaved }: { group: AgentGroup
   return (
     <Dialog title="Editar matéria" onClose={onClose}>
       <form onSubmit={e => { e.preventDefault(); void save(); }} className="space-y-4">
+        <label className="block"><Label>Tipo</Label><select value={kind} onChange={e => setKind(e.target.value as 'TESE' | 'SUPORTE')} className={inputCls}><option value="TESE">Tese</option><option value="SUPORTE">Suporte</option></select></label>
         <label className="block"><Label>Nome da matéria</Label><input value={name} onChange={e => setName(e.target.value)} className={inputCls} /></label>
         <label className="block"><Label hint="opcional">Descrição</Label><input value={description} onChange={e => setDescription(e.target.value)} className={inputCls} /></label>
         <label className="block"><Label>Agente inicial</Label>

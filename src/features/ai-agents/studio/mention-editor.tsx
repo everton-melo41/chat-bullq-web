@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { listMentions, MENTION_STYLE, MentionOption, MentionRef } from './studio.service';
+import { registerMention, listMentions, MENTION_STYLE, MentionOption, MentionRef } from './studio.service';
 
 interface Props {
   value: string;
@@ -45,9 +45,9 @@ export function MentionEditor({ value, onChange, refs, options, limit = 10_000 }
     const pos = el.selectionStart;
     const before = el.value.slice(0, pos).replace(/@([^\s@[\]]{0,30})$/, '');
     const after = el.value.slice(pos);
-    const token = `@[${opt.label}] `;
+    const display = registerMention(opt.label, opt, refs);
+    const token = `@[${display}] `;
     onChange(before + token + after);
-    refs.set(opt.label, { type: opt.type, id: opt.id });
     setQuery(null);
     requestAnimationFrame(() => {
       el.focus();

@@ -12,32 +12,34 @@ type Entry =
 
 /**
  * Conversa de teste com o agente. As ações que o agente tomaria aparecem
- * como cartões "simulado": nada é gravado e nenhuma mensagem sai para cliente.
+ * como cartões "simulado": nenhuma mensagem sai para cliente; o consumo é registrado.
  * Quando o agente passa a conversa adiante, o teste continua no agente citado.
  */
-export function TestChat({ agentId, agentName }: { agentId: string; agentName: string }) {
+export function TestChat({ agentId, agentName, revisionKey }: { agentId: string; agentName: string; revisionKey: string }) {
   const [useDraft, setUseDraft] = useState(true);
   const [current, setCurrent] = useState({ id: agentId, name: agentName });
   const [history, setHistory] = useState<TestChatTurn[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const session = useRef(crypto.randomUUID());
   const endRef = useRef<HTMLDivElement>(null);
 
-  const reset = () => { setCurrent({ id: agentId, name: agentName }); setHistory([]); setEntries([]); };
-  useEffect(() => { reset(); }, [agentId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reset = () => { session.current = crypto.randomUUID(); setBusy(false); setInput(''); setCurrent({ id: agentId, name: agentName }); setHistory([]); setEntries([]); };
+  useEffect(() => { reset(); return () => { session.current = crypto.randomUUID(); }; }, [agentId, revisionKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Chaves obrigatórias: scrollIntoView devolve Promise em navegadores novos, e o efeito não pode devolver nada.
   useEffect(() => { void endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [entries, busy]);
 
-  const ask = async (target: { id: string; name: string }, turns: TestChatTurn[], hops = 0): Promise<void> => {
-    const result = await studioService.testChat(target.id, turns, useDraft);
+  const ask = async (target: { id: string; name: string }, turns: TestChatTurn[], sessionId: string, hops = 0): Promise<void> => {
+    const result = await studioService.testChat(target.id, turns, useDraft, sessionId);
+    if (session.current !== sessionId) return;
     setEntries(e => [...e, { kind: 'agent', agentName: result.agent.name, result }]);
     let next = turns;
     if (result.reply) { next = [...turns, { role: 'assistant', content: result.reply }]; setHistory(next); }
     if (result.handoffTo && hops < 3) {
       setEntries(e => [...e, { kind: 'handoff', to: result.handoffTo!.name }]);
       setCurrent(result.handoffTo);
-      await ask(result.handoffTo, next, hops + 1);
+      await ask(result.handoffTo, next, sessionId, hops + 1);
     }
   };
 
@@ -47,9 +49,10 @@ export function TestChat({ agentId, agentName }: { agentId: string; agentName: s
     const turns: TestChatTurn[] = [...history, { role: 'user', content: text }];
     setHistory(turns); setInput(''); setEntries(e => [...e, { kind: 'user', text }]);
     setBusy(true);
-    try { await ask(current, turns); }
-    catch (err: any) { toast.error(err?.response?.data?.message ?? 'Não foi possível testar agora. Tente novamente.'); }
-    finally { setBusy(false); }
+    const sessionId = session.current;
+    try { await ask(current, turns, sessionId); }
+    catch (err: any) { if (session.current !== sessionId) return; toast.error(err?.response?.data?.message ?? 'Não foi possível testar agora. Tente novamente.'); }
+    finally { if (session.current === sessionId) setBusy(false); }
   };
 
   return (
@@ -65,7 +68,7 @@ export function TestChat({ agentId, agentName }: { agentId: string; agentName: s
           <button type="button" onClick={reset} title="Reiniciar conversa" className="rounded-md p-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"><RotateCcw className="h-4 w-4" /></button>
         </div>
       </div>
-      <p className="border-b border-zinc-100 px-4 py-1.5 text-xs text-zinc-600 dark:text-zinc-300 dark:border-zinc-700">Falando com <strong>{current.name}</strong>. Ações são simuladas; nada é gravado nem enviado.</p>
+      <p className="border-b border-zinc-100 px-4 py-1.5 text-xs text-zinc-600 dark:text-zinc-300 dark:border-zinc-700">Falando com <strong>{current.name}</strong>. Ações simuladas; consumo registrado. Limite: 300 turnos por organização/dia.</p>
 
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {entries.length === 0 && <p className="mt-8 text-center text-sm text-zinc-600 dark:text-zinc-400">Escreva como se fosse o lead para ver como o agente responde.</p>}
@@ -91,7 +94,7 @@ export function TestChat({ agentId, agentName }: { agentId: string; agentName: s
       </div>
 
       <form onSubmit={e => { e.preventDefault(); void send(); }} className="flex gap-2 border-t border-zinc-300 p-3 dark:border-zinc-700">
-        <input value={input} onChange={e => setInput(e.target.value)} placeholder="Mensagem do lead…" disabled={busy}
+        <input maxLength={4000} value={input} onChange={e => setInput(e.target.value)} placeholder="Mensagem do lead…" disabled={busy}
           className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-zinc-700 dark:bg-zinc-900" />
         <button type="submit" disabled={busy || !input.trim()} className="rounded-md bg-primary px-3 text-primary-foreground disabled:opacity-50"><Send className="h-4 w-4" /></button>
       </form>

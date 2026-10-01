@@ -20,8 +20,8 @@ export const studioService = {
     const { data } = await api.get('/ai-agents/mention-options');
     return data.data ?? data;
   },
-  async testChat(agentId: string, messages: TestChatTurn[], useDraft: boolean): Promise<TestChatResult> {
-    const { data } = await api.post(`/ai-agents/${agentId}/test-chat`, { messages, useDraft }, { timeout: 120_000 });
+  async testChat(agentId: string, messages: TestChatTurn[], useDraft: boolean, sessionId: string): Promise<TestChatResult> {
+    const { data } = await api.post(`/ai-agents/${agentId}/test-chat`, { messages, useDraft, sessionId }, { timeout: 120_000 });
     return data.data ?? data;
   },
 };
@@ -29,16 +29,36 @@ export const studioService = {
 /* ── Menções: o prompt guarda @[Rótulo](tipo:id); o editor mostra @[Rótulo]. ── */
 
 const RAW_RE = /@\[([^\]\n]{1,80})\]\((agent|tag|department|stage|action|media):([A-Za-z0-9_-]{1,64})\)/g;
-const DISPLAY_RE = /@\[([^\]\n]{1,80})\](?!\()/g;
+const DISPLAY_RE = /@\[([^\]\n]{1,240})\](?!\()/g;
 
-export interface MentionRef { type: MentionType; id: string }
+export interface MentionRef { type: MentionType; id: string; label?: string }
+
+/** Toda referência tem um rótulo visual exclusivo; nunca inferimos um id ambíguo. */
+export function registerMention(label: string, ref: MentionRef, refs: Map<string, MentionRef>): string {
+  const existing = [...refs].find(([, r]) => r.type === ref.type && r.id === ref.id && r.label === label);
+  if (existing) return existing[0];
+  let display = label;
+  if (refs.has(display) && (refs.get(display)!.type !== ref.type || refs.get(display)!.id !== ref.id)) {
+    display = `${label} · ${MENTION_STYLE[ref.type].name}`;
+    if (refs.has(display) && (refs.get(display)!.type !== ref.type || refs.get(display)!.id !== ref.id)) display += ` · ${ref.id}`;
+    while (refs.has(display) && (refs.get(display)!.type !== ref.type || refs.get(display)!.id !== ref.id)) display += ' ·';
+  }
+  refs.set(display, { ...ref, label });
+  return display;
+}
+function resolveMention(label: string, refs: Map<string, MentionRef>, options: MentionOption[]): MentionRef | undefined {
+  const ref = refs.get(label);
+  if (ref) return ref;
+  const matches = options.filter(o => o.label === label);
+  return matches.length === 1 ? matches[0] : undefined;
+}
 
 /** Converte o prompt salvo para o texto do editor e devolve o mapa rótulo → registro. */
 export function toDisplay(raw: string): { text: string; refs: Map<string, MentionRef> } {
   const refs = new Map<string, MentionRef>();
   const text = (raw ?? '').replace(RAW_RE, (_m, label: string, type: MentionType, id: string) => {
-    refs.set(label.trim(), { type, id });
-    return `@[${label.trim()}]`;
+    const display = registerMention(label.trim(), { type, id }, refs);
+    return `@[${display}]`;
   });
   return { text, refs };
 }
@@ -47,8 +67,8 @@ export function toDisplay(raw: string): { text: string; refs: Map<string, Mentio
 export function toRaw(text: string, refs: Map<string, MentionRef>, options: MentionOption[]): string {
   return text.replace(DISPLAY_RE, (m, label: string) => {
     const key = label.trim();
-    const ref = refs.get(key) ?? options.find(o => o.label === key);
-    return ref ? `@[${key}](${ref.type}:${ref.id})` : m;
+    const ref = resolveMention(key, refs, options);
+    return ref ? `@[${ref.label ?? key}](${ref.type}:${ref.id})` : m;
   });
 }
 
@@ -59,7 +79,7 @@ export function listMentions(text: string, refs: Map<string, MentionRef>, option
   const seen = new Map<string, MentionChip>();
   for (const m of text.matchAll(DISPLAY_RE)) {
     const label = m[1].trim();
-    const ref = refs.get(label) ?? options.find(o => o.label === label);
+    const ref = resolveMention(label, refs, options);
     const valid = !!ref && options.some(o => o.type === ref.type && o.id === ref.id);
     seen.set(label, { label, type: ref?.type ?? null, valid });
   }

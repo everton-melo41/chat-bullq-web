@@ -20,6 +20,12 @@ export function StudioPage() {
   const orgId = useOrgId();
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const openAgent = (id: string) => {
+    if (id === selectedId) return;
+    if (editorDirty && !window.confirm('Descartar alterações não salvas e abrir outro agente?')) return;
+    setEditorDirty(false); setSelectedId(id);
+  };
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showChat, setShowChat] = useState(true);
@@ -50,13 +56,13 @@ export function StudioPage() {
     void qc.invalidateQueries({ queryKey: ['mention-options'] });
     void qc.invalidateQueries({ queryKey: ['studio-revisions'] });
   };
-  const created = (agentId: string) => { setDialog(null); refreshAll(); setSelectedId(agentId); };
+  const created = (agentId: string) => { setDialog(null); refreshAll(); openAgent(agentId); };
   const toggle = (id: string) => setCollapsed(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const AgentRow = ({ a, initial, step, external }: { a: { id: string; name: string; publishedRevisionId?: string | null }; initial?: boolean; step?: number | null; external?: number }) => {
     const active = selectedId === a.id;
     return (
-      <button type="button" onClick={() => setSelectedId(a.id)} aria-current={active ? 'true' : undefined}
+      <button type="button" onClick={() => openAgent(a.id)} aria-current={active ? 'true' : undefined}
         className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${active
           ? 'bg-primary/15 font-semibold text-zinc-950 dark:text-white'
           : 'text-zinc-800 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800'}`}>
@@ -99,7 +105,9 @@ export function StudioPage() {
             </p>
           )}
 
-          {groups.map(g => {
+          {(['TESE', 'SUPORTE'] as const).map(kind => <div key={kind} className="space-y-4">
+            <h2 className="px-1 text-sm font-semibold">{kind === 'SUPORTE' ? 'Suporte (atende todos os números)' : 'Teses'}</h2>
+          {groups.filter(g => (g.kind ?? 'TESE') === kind).map(g => {
             const steps = stepsInGroup(g.initialAgentId, g.members.map(m => m.agentId), links);
             const members = g.members.filter(m => m.agent.name.toLowerCase().includes(q))
               .sort((x, y) => (steps.get(x.agentId) ?? 99) - (steps.get(y.agentId) ?? 99));
@@ -127,6 +135,7 @@ export function StudioPage() {
               </section>
             );
           })}
+          </div>)}
 
           {ungrouped.length > 0 && (
             <section>
@@ -160,15 +169,19 @@ export function StudioPage() {
           </div>
         )}
         {selectedId && agentQ.isLoading && <Loader2 className="mx-auto mt-10 h-5 w-5 animate-spin text-zinc-500" />}
+        {selectedId && agentQ.isError && <div role="alert" className="p-6 text-red-700">
+          Não foi possível carregar o agente. <button className="underline" onClick={() => void agentQ.refetch()}>Tentar de novo</button>
+        </div>}
+        {selectedId && !agentQ.isLoading && !agentQ.isError && !agentQ.data && <p className="p-6">Agente não encontrado.</p>}
         {selectedId && agentQ.data && (
-          <AgentEditor key={agentQ.data.id + (agentQ.data.draftRevisionId ?? '') + (agentQ.data.publishedRevisionId ?? '')}
-            agent={agentQ.data} groups={groups} options={optionsQ.data ?? []} flow={flowFor(agentQ.data.id)} onOpenAgent={setSelectedId} onDeleted={() => { setSelectedId(null); refreshAll(); }} onChanged={() => { refreshAll(); void agentQ.refetch(); }} />
+          <AgentEditor key={agentQ.data.id} onDirtyChange={setEditorDirty}
+            agent={agentQ.data} groups={groups} options={optionsQ.data ?? []} flow={flowFor(agentQ.data.id)} onOpenAgent={openAgent} onDeleted={() => { setEditorDirty(false); setSelectedId(null); refreshAll(); }} onChanged={() => { refreshAll(); void agentQ.refetch(); }} />
         )}
       </main>
 
       {selectedId && agentQ.data && (showChat ? (
         <aside className="flex w-96 shrink-0 flex-col border-l border-zinc-300 dark:border-zinc-700">
-          <TestChat agentId={agentQ.data.id} agentName={agentQ.data.name} />
+          <TestChat key={agentQ.data.id} revisionKey={JSON.stringify([agentQ.data.draftRevision, agentQ.data.publishedRevision])} agentId={agentQ.data.id} agentName={agentQ.data.name} />
           <button type="button" onClick={() => setShowChat(false)} className="border-t border-zinc-300 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">Recolher chat de teste</button>
         </aside>
       ) : (
